@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirothinker-web
+  namespace: chat
+  labels:
+    app: mirothinker
+    component: mirothinker-web
+spec:
+  replicas: 1  # Gradio demo typically runs as single instance
+  selector:
+    matchLabels:
+      app: mirothinker-web
+      component: mirothinker-web
+  template:
+    metadata:
+      labels:
+        app: mirothinker-web
+        component: mirothinker-web
+    spec:
+      containers:
+      - name: mirothinker-web
+        image: 192.168.16.55/aigc/mirothinker-web:20260116  # Update with your registry
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 7860
+          name: http
+          protocol: TCP
+        env:
+        # Gradio specific
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: PORT
+        
+        # Load from ConfigMap
+        - name: DEFAULT_MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: DEFAULT_MODEL_NAME
+        - name: DEFAULT_LLM_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: DEFAULT_LLM_PROVIDER
+        - name: DEFAULT_AGENT_SET
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: DEFAULT_AGENT_SET
+        - name: SERPER_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: SERPER_BASE_URL
+        - name: JINA_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: JINA_BASE_URL
+        - name: LOG_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: LOG_DIR
+        - name: DEMO_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: DEMO_MODE
+        - name: SUMMARY_LLM_MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mirothinker-config
+              key: SUMMARY_LLM_MODEL_NAME
+        
+        # Load from Secret
+        - name: BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: BASE_URL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: API_KEY
+        - name: SERPER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: SERPER_API_KEY
+        - name: JINA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: JINA_API_KEY
+        - name: E2B_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: E2B_API_KEY
+        - name: SUMMARY_LLM_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: SUMMARY_LLM_BASE_URL
+        - name: SUMMARY_LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: SUMMARY_LLM_API_KEY
+        - name: TENCENTCLOUD_SECRET_ID
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: TENCENTCLOUD_SECRET_ID
+        - name: TENCENTCLOUD_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mirothinker-secrets
+              key: TENCENTCLOUD_SECRET_KEY
+        
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 7860
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 7860
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      
+      volumes:
+      - name: logs
+        persistentVolumeClaim:
+          claimName: mirothinker-web-logs
+

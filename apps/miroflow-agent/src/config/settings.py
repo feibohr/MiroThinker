@@ -13,13 +13,19 @@ This module handles:
 
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from mcp import StdioServerParameters
 from omegaconf import DictConfig
 
 # Load environment variables from .env file
-load_dotenv()
+# Look for .env in the miroflow-agent directory (parent of src/config)
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()  # Fallback to default behavior
 
 # API for Google Search
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
@@ -55,9 +61,9 @@ ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
-# API for Sogou Search
-TENCENTCLOUD_SECRET_ID = os.environ.get("TENCENTCLOUD_SECRET_ID")
-TENCENTCLOUD_SECRET_KEY = os.environ.get("TENCENTCLOUD_SECRET_KEY")
+# API for Sogou Search (optional - provide empty string as default)
+TENCENTCLOUD_SECRET_ID = os.environ.get("TENCENTCLOUD_SECRET_ID", "")
+TENCENTCLOUD_SECRET_KEY = os.environ.get("TENCENTCLOUD_SECRET_KEY", "")
 
 # API for Summary LLM
 SUMMARY_LLM_API_KEY = os.environ.get("SUMMARY_LLM_API_KEY")

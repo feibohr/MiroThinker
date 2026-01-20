@@ -1,0 +1,632 @@
+{
+  "description": "完整的 API 流式响应示例 - 展示研究过程到最终回复的完整流程",
+  "request": {
+    "method": "POST",
+    "url": "/v1/chat/completions",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "model": "mirothinker",
+      "messages": [
+        {
+          "role": "user",
+          "content": "商业航天的发展历程是怎样的？"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "response_stream": [
+    {
+      "description": "1. 初始角色声明",
+      "data": {
+        "type": "chat",
+        "messageId": "f1891170-a966-4ff3-986b-2fccec1d1143",
+        "chatResp": {
+          "id": "chatcmpl-abc123",
+          "object": "chat.completion.chunk",
+          "created": 1737300000,
+          "model": "mirothinker",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant"
+              },
+              "finish_reason": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "2. 研究过程开始 - 标题",
+      "data": {
+        "type": "chat",
+        "messageId": "f1891170-a966-4ff3-986b-2fccec1d1143",
+        "chatResp": {
+          "id": "chatcmpl-abc123",
+          "object": "chat.completion.chunk",
+          "created": 1737300000,
+          "model": "mirothinker",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "taskstat": "message_start",
+                "role": "task",
+                "content_type": "research_process_block",
+                "task_content": "{\"label\": \"正在收集和分析资料\"}",
+                "content": "",
+                "taskid": "1737300000123000"
+              },
+              "finish_reason": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "3. 研究过程结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300000,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_process_block",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300000123000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "4. 思考块开始",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300001,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_htink_block",
+              "task_content": "{\"label\": \"正在理解用户的提问\"}",
+              "content": "",
+              "taskid": "1737300001234000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "5. 思考内容流 - 第1部分",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300001,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_process",
+              "role": "task",
+              "content_type": "research_htink_block",
+              "task_content": "用户想要了解",
+              "content": "",
+              "taskid": "1737300001234000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "6. 思考内容流 - 第2部分",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300001,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_process",
+              "role": "task",
+              "content_type": "research_htink_block",
+              "task_content": "商业航天的发展历程，这需要搜索相关的历史资料和最新发展动态。",
+              "content": "",
+              "taskid": "1737300001234000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "7. 搜索关键字 - 开始",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300002,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_web_search_keyword",
+              "task_content": "{\"label\": \"搜索\"}",
+              "content": "",
+              "taskid": "1737300002345000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "8. 搜索关键字 - 内容",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300002,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_process",
+              "role": "task",
+              "content_type": "research_web_search_keyword",
+              "task_content": "商业航天发展历程 2026",
+              "content": "",
+              "taskid": "1737300002345000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "9. 搜索关键字 - 结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300002,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_web_search_keyword",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300002345000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "10. 搜索结果数量 - 开始",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300003,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_web_search",
+              "task_content": "{\"label\": \"根据用户需求搜索到相关网页：3个\"}",
+              "content": "",
+              "taskid": "1737300003456000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "11. 搜索结果数量 - 结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300003,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_web_search",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300003456000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "12. 第1个搜索结果 - 标题",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300003,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_web_search",
+              "task_content": "{\"label\": \"商业航天发展白皮书 2026\"}",
+              "content": "",
+              "taskid": "1737300003567000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "13. 第1个搜索结果 - URL",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300003,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_process",
+              "role": "task",
+              "content_type": "research_web_search",
+              "task_content": "https://example.com/space-whitepaper-2026",
+              "content": "",
+              "taskid": "1737300003567000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "14. 第1个搜索结果 - 结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300003,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_web_search",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300003567000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "15. 浏览网页标题",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300004,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_web_browse",
+              "task_content": "{\"label\": \"浏览网页\"}",
+              "content": "",
+              "taskid": "1737300004678000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "16. 浏览网页标题 - 结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300004,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_web_browse",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300004678000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "17. 网页内容 - URL",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300005,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_web_browse",
+              "task_content": "{\"label\": \"https://example.com/space-whitepaper-2026\"}",
+              "content": "",
+              "taskid": "1737300005789000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "18. 网页内容 - 正文",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300005,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_process",
+              "role": "task",
+              "content_type": "research_web_browse",
+              "task_content": "商业航天是指由私营企业主导的航天活动...(网页内容摘要)",
+              "content": "",
+              "taskid": "1737300005789000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "19. 网页内容 - 结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300005,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_web_browse",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300005789000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "20. 思考块结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300006,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_htink_block",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300001234000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "21. 研究完成 - 开始",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300007,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_start",
+              "role": "task",
+              "content_type": "research_completed",
+              "task_content": "{\"label\": \"已收集充分的信息，即将开始回复\"}",
+              "content": "",
+              "taskid": "1737300007890000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "22. 研究完成 - 结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300007,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "taskstat": "message_result",
+              "role": "task",
+              "content_type": "research_completed",
+              "task_content": "",
+              "content": "",
+              "taskid": "1737300007890000"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "23. 最终回复 - 开始 (标准OpenAI格式)",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300008,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant",
+              "content": "根据收集到的资料，商业航天的发展历程可以分为以下几个阶段：\n\n"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "24. 最终回复 - 继续",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300008,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "1. **萌芽期（20世纪80-90年代）**：私营企业开始尝试进入航天领域...\n\n"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "25. 最终回复 - 继续",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300008,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "2. **发展期（2000-2010年代）**：SpaceX、Blue Origin等公司成立...\n\n"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "26. 最终回复 - 继续",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300008,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "3. **成熟期（2020年代至今）**：商业航天进入快速发展阶段，技术更加成熟，成本大幅降低..."
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    },
+    {
+      "description": "27. 流结束",
+      "data": {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion.chunk",
+        "created": 1737300009,
+        "model": "mirothinker",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    }
+  ],
+  "notes": [
+    "每个 SSE 事件都以 'data: ' 开头，后面跟 JSON 对象",
+    "所有响应都包装在 {type: 'chat', messageId: '...', chatResp: {...}} 结构中",
+    "messageId 在同一次对话中保持不变",
+    "chatResp 包含标准的 OpenAI Chat Completion Chunk 格式",
+    "最后会发送 'data: [DONE]' 表示流结束",
+    "taskid 用于关联同一个内容块的 start/process/result 事件",
+    "content_type 用于前端区分不同的渲染样式",
+    "最终回复使用标准的 OpenAI 格式（role=assistant, 使用 content 字段）",
+    "注意：为简洁起见，后续示例省略了外层包装，但实际响应中都会包含"
+  ]
+}
+

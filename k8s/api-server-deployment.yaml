@@ -1,0 +1,126 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations: {}
+  labels:
+    app: mirothinker
+    component: api-server
+    k8s.kuboard.cn/layer: svc
+    k8s.kuboard.cn/name: mirothinker-api
+  name: mirothinker-api
+  namespace: chat
+  resourceVersion: '552130914'
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: mirothinker
+      component: api-server
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: '2026-01-16T18:39:49+08:00'
+      creationTimestamp: null
+      labels:
+        app: mirothinker
+        component: api-server
+    spec:
+      containers:
+        - envFrom:
+            - configMapRef:
+                name: mirothinker-config
+          image: '192.168.16.55/aigc/mirothinker-api:20260116'
+          imagePullPolicy: Always
+          name: api-server
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          resources:
+            limits:
+              cpu: '1'
+              memory: 4Gi
+            requests:
+              cpu: 200m
+              memory: 225Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /app/logs
+              name: mirothinker
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+        - name: harbor
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - hostPath:
+            path: /mirothinker/logs
+            type: DirectoryOrCreate
+          name: mirothinker
+status:
+  availableReplicas: 1
+  conditions:
+    - lastTransitionTime: '2026-01-16T10:43:18Z'
+      lastUpdateTime: '2026-01-16T10:43:18Z'
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: 'True'
+      type: Available
+    - lastTransitionTime: '2026-01-16T10:14:55Z'
+      lastUpdateTime: '2026-01-16T10:43:18Z'
+      message: ReplicaSet "mirothinker-api-5cf6f9df5d" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: 'True'
+      type: Progressing
+  observedGeneration: 10
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations: {}
+  labels:
+    app: mirothinker
+    component: api-server
+    k8s.kuboard.cn/layer: svc
+    k8s.kuboard.cn/name: mirothinker-api
+  name: mirothinker-api
+  namespace: chat
+  resourceVersion: '552123245'
+spec:
+  clusterIP: 10.1.236.214
+  clusterIPs:
+    - 10.1.236.214
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+    - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+    - name: zhspx5
+      nodePort: 28000
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+  selector:
+    app: mirothinker
+    component: api-server
+  sessionAffinity: None
+  type: NodePort
+status:
+  loadBalancer: {}
+

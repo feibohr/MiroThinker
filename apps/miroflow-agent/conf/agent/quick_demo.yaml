@@ -1,0 +1,18 @@
+# conf/agent/quick_demo.yaml - 快速 demo 配置
+defaults:
+  - default
+  - _self_
+
+main_agent:
+  tools:
+    - tool-google-search  # Google 搜索
+    - tool-python         # Python 代码执行
+  tool_blacklist:
+    - [ "tool-python", "download_file_from_sandbox_to_local" ]
+  max_turns: 20
+
+sub_agents:
+
+keep_tool_result: -1
+context_compress_limit: 0
+

@@ -49,8 +49,8 @@ class OpenAIClient(BaseClient):
     def _update_token_usage(self, usage_data: Any) -> None:
         """Update cumulative token usage"""
         if usage_data:
-            input_tokens = getattr(usage_data, "prompt_tokens", 0)
-            output_tokens = getattr(usage_data, "completion_tokens", 0)
+            input_tokens = getattr(usage_data, "prompt_tokens", 0) or 0
+            output_tokens = getattr(usage_data, "completion_tokens", 0) or 0
             prompt_tokens_details = getattr(usage_data, "prompt_tokens_details", None)
             if prompt_tokens_details:
                 cached_tokens = (
@@ -161,14 +161,32 @@ class OpenAIClient(BaseClient):
                     response = self.client.chat.completions.create(**params)
                 # Update token count
                 self._update_token_usage(getattr(response, "usage", None))
+                
+                # Debug: log response structure
+                finish_reason = getattr(response.choices[0], 'finish_reason', 'N/A')
+                if finish_reason is None or finish_reason == 'N/A':
+                    self.task_log.log_step(
+                        "warning",
+                        "LLM | Response Debug",
+                        f"Response structure: {response}, Choices: {response.choices if response.choices else 'None'}",
+                    )
+                
                 self.task_log.log_step(
                     "info",
                     "LLM | Response Status",
-                    f"{getattr(response.choices[0], 'finish_reason', 'N/A')}",
+                    f"{finish_reason}",
                 )
 
                 # Check if response was truncated due to length limit
                 finish_reason = getattr(response.choices[0], "finish_reason", None)
+                # Handle None finish_reason - treat as 'stop' for compatibility
+                if finish_reason is None:
+                    finish_reason = "stop"
+                    self.task_log.log_step(
+                        "warning",
+                        "LLM | Missing finish_reason",
+                        "finish_reason is None, treating as 'stop' for compatibility",
+                    )
                 if finish_reason == "length":
                     # If this is not the last retry, increase max_tokens and retry
                     if attempt < max_retries - 1:
@@ -288,14 +306,27 @@ class OpenAIClient(BaseClient):
             return "", True, message_history  # Exit loop, return message_history
 
         # Extract LLM response text
-        if llm_response.choices[0].finish_reason == "stop":
+        # Handle both standard finish_reason and camelCase finishReason
+        finish_reason = getattr(llm_response.choices[0], "finish_reason", None)
+        if finish_reason is None:
+            finish_reason = getattr(llm_response.choices[0], "finishReason", None)
+        if finish_reason is None:
+            finish_reason = "stop"  # Default to stop if not found
+            
+        if finish_reason == "stop":
             assistant_response_text = llm_response.choices[0].message.content or ""
+            
+            # Handle reasoning field (for o1-style models and MiroThinker)
+            # If reasoning_content exists, prepend it as <think> tags
+            reasoning_content = getattr(llm_response.choices[0].message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_response_text = f"<think>\n{reasoning_content}\n</think>\n\n{assistant_response_text}"
 
             message_history.append(
                 {"role": "assistant", "content": assistant_response_text}
             )
 
-        elif llm_response.choices[0].finish_reason == "length":
+        elif finish_reason == "length":
             assistant_response_text = llm_response.choices[0].message.content or ""
             if assistant_response_text == "":
                 assistant_response_text = "LLM response is empty."
@@ -322,7 +353,7 @@ class OpenAIClient(BaseClient):
 
         else:
             raise ValueError(
-                f"Unsupported finish reason: {llm_response.choices[0].finish_reason}"
+                f"Unsupported finish reason: {finish_reason}"
             )
 
         return assistant_response_text, False, message_history

@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  api-server:
+    build:
+      context: ../../
+      dockerfile: apps/api-server/Dockerfile
+    container_name: mirothinker-api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      # LLM Configuration
+      - BASE_URL=${BASE_URL}
+      - API_KEY=${API_KEY}
+      - DEFAULT_MODEL_NAME=${DEFAULT_MODEL_NAME:-mirothinker}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-qwen}
+      - DEFAULT_AGENT_SET=${DEFAULT_AGENT_SET:-demo}
+      
+      # Tool API Keys
+      - SERPER_API_KEY=${SERPER_API_KEY}
+      - SERPER_BASE_URL=${SERPER_BASE_URL:-https://google.serper.dev}
+      - JINA_API_KEY=${JINA_API_KEY}
+      - JINA_BASE_URL=${JINA_BASE_URL:-https://r.jina.ai}
+      - E2B_API_KEY=${E2B_API_KEY}
+      
+      # Summary LLM
+      - SUMMARY_LLM_BASE_URL=${SUMMARY_LLM_BASE_URL}
+      - SUMMARY_LLM_MODEL_NAME=${SUMMARY_LLM_MODEL_NAME}
+      - SUMMARY_LLM_API_KEY=${SUMMARY_LLM_API_KEY}
+      
+      # Optional API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      
+      # Logging
+      - LOG_DIR=/app/logs
+      - DEMO_MODE=1
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/apps/api-server/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: mirothinker-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-server
+    restart: unless-stopped
+
+networks:
+  default:
+    name: mirothinker-network
+

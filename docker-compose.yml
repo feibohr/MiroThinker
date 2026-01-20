@@ -1,0 +1,130 @@
+services:
+  # MiroThinker API Server
+  api-server:
+    build:
+      context: .
+      dockerfile: apps/api-server/Dockerfile
+    container_name: mirothinker-api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      # LLM Configuration
+      - BASE_URL=${BASE_URL}
+      - API_KEY=${API_KEY}
+      - DEFAULT_MODEL_NAME=${DEFAULT_MODEL_NAME:-mirothinker}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-qwen}
+      - DEFAULT_AGENT_SET=${DEFAULT_AGENT_SET:-demo}
+      
+      # Tool API Keys
+      - SERPER_API_KEY=${SERPER_API_KEY}
+      - SERPER_BASE_URL=${SERPER_BASE_URL:-https://google.serper.dev}
+      - JINA_API_KEY=${JINA_API_KEY}
+      - JINA_BASE_URL=${JINA_BASE_URL:-https://r.jina.ai}
+      - E2B_API_KEY=${E2B_API_KEY}
+      
+      # Summary LLM (for context compression)
+      - SUMMARY_LLM_BASE_URL=${SUMMARY_LLM_BASE_URL:-${BASE_URL}}
+      - SUMMARY_LLM_MODEL_NAME=${SUMMARY_LLM_MODEL_NAME:-gpt-4o-mini}
+      - SUMMARY_LLM_API_KEY=${SUMMARY_LLM_API_KEY:-${API_KEY}}
+      
+      # Context Management
+      - CONTEXT_COMPRESSION_ENABLED=${CONTEXT_COMPRESSION_ENABLED:-true}
+      - MAX_HISTORY_TOKENS=${MAX_HISTORY_TOKENS:-30000}
+      
+      # Concurrency
+      - PIPELINE_POOL_SIZE=${PIPELINE_POOL_SIZE:-5}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-10}
+      
+      # Logging
+      - LOG_DIR=/app/logs
+      - DEMO_MODE=1
+    volumes:
+      - api-logs:/app/logs
+      - ./apps/miroflow-agent/.env:/app/apps/miroflow-agent/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - mirothinker
+
+  # Gradio Demo UI
+  gradio-demo:
+    build:
+      context: .
+      dockerfile: apps/gradio-demo/Dockerfile
+    container_name: mirothinker-gradio
+    ports:
+      - "${GRADIO_PORT:-7860}:7860"
+    environment:
+      # Gradio Configuration
+      - PORT=7860
+      
+      # LLM Configuration
+      - BASE_URL=${BASE_URL}
+      - API_KEY=${API_KEY}
+      - DEFAULT_MODEL_NAME=${DEFAULT_MODEL_NAME:-mirothinker}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-qwen}
+      - DEFAULT_AGENT_SET=${DEFAULT_AGENT_SET:-demo}
+      
+      # Tool API Keys
+      - SERPER_API_KEY=${SERPER_API_KEY}
+      - SERPER_BASE_URL=${SERPER_BASE_URL:-https://google.serper.dev}
+      - JINA_API_KEY=${JINA_API_KEY}
+      - JINA_BASE_URL=${JINA_BASE_URL:-https://r.jina.ai}
+      - E2B_API_KEY=${E2B_API_KEY}
+      
+      # Summary LLM
+      - SUMMARY_LLM_BASE_URL=${SUMMARY_LLM_BASE_URL:-${BASE_URL}}
+      - SUMMARY_LLM_MODEL_NAME=${SUMMARY_LLM_MODEL_NAME:-gpt-4o-mini}
+      - SUMMARY_LLM_API_KEY=${SUMMARY_LLM_API_KEY:-${API_KEY}}
+      
+      # Logging
+      - LOG_DIR=/app/logs
+      - DEMO_MODE=1
+    volumes:
+      - gradio-logs:/app/logs
+      - ./apps/miroflow-agent/.env:/app/apps/miroflow-agent/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - mirothinker
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: mirothinker-nginx
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-server
+      - gradio-demo
+    restart: unless-stopped
+    networks:
+      - mirothinker
+    profiles:
+      - with-nginx
+
+volumes:
+  api-logs:
+    name: mirothinker-api-logs
+  gradio-logs:
+    name: mirothinker-gradio-logs
+
+networks:
+  mirothinker:
+    name: mirothinker-network
+    driver: bridge
+

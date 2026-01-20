@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 os.environ["DEMO_MODE"] = "1"
 
 # Load environment variables from .env file
-load_dotenv()
+# First try to load from miroflow-agent/.env, then from gradio-demo/.env
+miroflow_env_path = Path(__file__).parent.parent / "miroflow-agent" / ".env"
+if miroflow_env_path.exists():
+    load_dotenv(dotenv_path=miroflow_env_path)
+else:
+    load_dotenv()  # Fallback to default .env in current directory
 
 # Global Hydra initialization flag
 _hydra_initialized = False
@@ -427,6 +432,37 @@ def _format_think_content(text: str) -> str:
     # Replace <think> tags with blockquote format (no label)
     text = re.sub(r"<think>\s*", "\n> ", text)
     text = re.sub(r"\s*</think>", "\n", text)
+    
+    # Shorten long URLs in parentheses format (text(url)) to markdown links [text](url)
+    # Pattern: 中文或英文描述（长URL）
+    def shorten_url_in_parens(match):
+        description = match.group(1)
+        url = match.group(2)
+        # If URL is very long (>60 chars), create a markdown link
+        if len(url) > 60:
+            # Extract domain for display
+            domain_match = re.search(r'https?://([^/]+)', url)
+            domain = domain_match.group(1) if domain_match else 'link'
+            return f"{description} [[链接]]({url})"
+        else:
+            return f"{description} [{url}]({url})"
+    
+    # Match pattern: text（url）or text(url)
+    text = re.sub(r'([^\(（]+)[（(](https?://[^\)）]+)[)）]', shorten_url_in_parens, text)
+    
+    # Also convert standalone long URLs to shortened format
+    def shorten_standalone_url(match):
+        url = match.group(0)
+        if len(url) > 80:
+            # Extract domain
+            domain_match = re.search(r'https?://([^/]+)', url)
+            domain = domain_match.group(1) if domain_match else 'link'
+            return f"[{domain}...]({url})"
+        return url
+    
+    # Match standalone URLs not already in markdown link format
+    text = re.sub(r'(?<!\[)(?<!\()https?://[^\s\)）\]]+(?!\))', shorten_standalone_url, text)
+    
     # Convert newlines within thinking to blockquote continuation
     lines = text.split("\n")
     result = []
