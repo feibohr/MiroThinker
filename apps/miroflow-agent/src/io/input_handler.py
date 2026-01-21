@@ -642,7 +642,7 @@ def process_input(task_description: str, task_file_name: str) -> Tuple[str, str]
             file_content_section += f"\nWarning: There was an error processing the file '{task_file_name}': {str(e)}"
 
     # output format requirement
-    updated_task_description += "\nYou should follow the format instruction in the request strictly and wrap the final answer in \\boxed{}."
+    # Removed: boxed format instruction (no longer required)
 
     # Append file content at the end
     updated_task_description += file_content_section

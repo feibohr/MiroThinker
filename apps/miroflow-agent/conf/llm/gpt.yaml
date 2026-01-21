@@ -1,0 +1,9 @@
+# conf/llm/qwen-3.yaml
+provider: "openai"
+model_name: "doubao-seed-1.8"
+base_url: "https://gpt.sinohealth.com/v2/openai"
+max_context_length: 256000
+max_tokens: 10000
+top_p: 0.95
+repetition_penalty: 1.05
+temperature: 1.0

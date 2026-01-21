@@ -13,7 +13,7 @@ services:
       - BASE_URL=${BASE_URL}
       - API_KEY=${API_KEY}
       - DEFAULT_MODEL_NAME=${DEFAULT_MODEL_NAME:-mirothinker}
-      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-qwen}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-mirothinker}
       - DEFAULT_AGENT_SET=${DEFAULT_AGENT_SET:-demo}
       
       # Tool API Keys

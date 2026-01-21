@@ -134,7 +134,7 @@ class ContextManager:
             conversation_text += f"[Turn {idx}] {role}: {content}\n\n"
 
         # Construct prompt for intelligent compression
-        compression_prompt = f"""You are a context compression assistant. Your task is to analyze a conversation history and extract ONLY the information that is relevant to answering the current question.
+        compression_prompt = f"""You are a context compression assistant. Your task is to analyze a conversation history and determine if it is relevant to the current question. If relevant, extract key information; if not relevant, explicitly state that the history is unrelated.
 
 **Current Question:**
 {current_question}
@@ -143,25 +143,45 @@ class ContextManager:
 {conversation_text}
 
 **Instructions:**
-1. Read the current question carefully to understand what information is needed
-2. Review the conversation history and identify relevant context:
-   - Previous questions/topics that relate to the current question
-   - Important facts, data, or conclusions mentioned
-   - Context that helps understand the current question
-3. Ignore irrelevant conversations, tangential topics, or outdated information
-4. Generate a concise summary (max 500 words) that includes:
-   - Key relevant facts from previous conversations
-   - Important context needed to answer the current question
-   - Any constraints or preferences mentioned earlier
+
+**Step 1: Relevance Assessment (CRITICAL)**
+First, determine if the conversation history has ANY meaningful connection to the current question:
+- Does the history discuss the same topic, domain, or subject matter?
+- Are there shared entities, concepts, or themes?
+- Would information from the history actually help answer the current question?
+
+**Step 2: Action Based on Relevance**
+
+If RELEVANT (history is related to current question):
+- Extract key facts, data, conclusions, or context from the history
+- Include previous questions/topics that directly relate
+- Include constraints, preferences, or requirements mentioned earlier
+- Summarize in a concise format (max 500 words)
+
+If NOT RELEVANT (history is unrelated to current question):
+- Output ONLY: "No relevant context from previous conversation."
+- DO NOT attempt to extract or summarize unrelated information
+- DO NOT force connections between unrelated topics
+
+**Critical Rules:**
+❌ DO NOT let unrelated history influence or pollute the current question
+❌ DO NOT assume continuity when topics have clearly changed
+❌ DO NOT include information "just in case" - be selective and strict
+✅ DO treat the current question independently if history is unrelated
+✅ DO acknowledge when starting a new, unrelated topic
+✅ DO only include context that DIRECTLY helps answer the current question
 
 **Output Format:**
-Provide a concise, well-structured summary in the following format:
 
+If relevant:
 # Relevant Context
 
-[Your summary here - focus on what's needed to answer the current question]
+[Concise summary of relevant information from history]
 
-Remember: Be selective. Only include what's truly relevant to the current question."""
+If not relevant:
+No relevant context from previous conversation.
+
+Remember: The history is for REFERENCE ONLY. It should NOT be treated as required context unless it is truly relevant to the current question. When in doubt, err on the side of declaring it irrelevant."""
 
         try:
             logger.info(

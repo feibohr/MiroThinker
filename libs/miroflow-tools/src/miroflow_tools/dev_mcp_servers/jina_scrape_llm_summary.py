@@ -13,18 +13,19 @@ from mcp.server.fastmcp import FastMCP
 # Configure logging
 logger = logging.getLogger("miroflow")
 
-SUMMARY_LLM_BASE_URL = os.environ.get("SUMMARY_LLM_BASE_URL")
-SUMMARY_LLM_MODEL_NAME = os.environ.get("SUMMARY_LLM_MODEL_NAME")
-SUMMARY_LLM_API_KEY = os.environ.get("SUMMARY_LLM_API_KEY")
+# Use main LLM configuration for web scraping (not summary model)
+SCRAPE_LLM_BASE_URL = os.environ.get("BASE_URL")
+SCRAPE_LLM_MODEL_NAME = os.environ.get("DEFAULT_MODEL_NAME")
+SCRAPE_LLM_API_KEY = os.environ.get("API_KEY")
 
-# Ensure SUMMARY_LLM_BASE_URL has the correct endpoint
-if SUMMARY_LLM_BASE_URL:
+# Ensure SCRAPE_LLM_BASE_URL has the correct endpoint
+if SCRAPE_LLM_BASE_URL:
     # If URL ends with /v1, append /chat/completions
-    if SUMMARY_LLM_BASE_URL.rstrip("/").endswith("/v1"):
-        SUMMARY_LLM_BASE_URL = SUMMARY_LLM_BASE_URL.rstrip("/") + "/chat/completions"
+    if SCRAPE_LLM_BASE_URL.rstrip("/").endswith("/v1"):
+        SCRAPE_LLM_BASE_URL = SCRAPE_LLM_BASE_URL.rstrip("/") + "/chat/completions"
     # If URL doesn't end with /chat/completions, append it
-    elif not SUMMARY_LLM_BASE_URL.endswith("/chat/completions"):
-        SUMMARY_LLM_BASE_URL = SUMMARY_LLM_BASE_URL.rstrip("/") + "/chat/completions"
+    elif not SCRAPE_LLM_BASE_URL.endswith("/chat/completions"):
+        SCRAPE_LLM_BASE_URL = SCRAPE_LLM_BASE_URL.rstrip("/") + "/chat/completions"
 
 JINA_API_KEY = os.environ.get("JINA_API_KEY", "")
 JINA_BASE_URL = os.environ.get("JINA_BASE_URL", "https://r.jina.ai")
@@ -104,7 +105,7 @@ async def scrape_and_extract_info(
         url=url,
         content=scrape_result["content"],
         info_to_extract=info_to_extract,
-        model=SUMMARY_LLM_MODEL_NAME,
+        model=SCRAPE_LLM_MODEL_NAME,
         max_tokens=8192,
     )
 
@@ -657,19 +658,19 @@ async def extract_info_with_llm(
         }
 
     # Validate LLM endpoint configuration early for clearer errors
-    if not SUMMARY_LLM_BASE_URL or not SUMMARY_LLM_BASE_URL.strip():
+    if not SCRAPE_LLM_BASE_URL or not SCRAPE_LLM_BASE_URL.strip():
         return {
             "success": False,
             "extracted_info": "",
-            "error": "SUMMARY_LLM_BASE_URL environment variable is not set",
+            "error": "BASE_URL environment variable is not set",
             "model_used": model,
             "tokens_used": 0,
         }
 
     # Prepare headers (add Authorization if API key is available)
     headers = {"Content-Type": "application/json"}
-    if SUMMARY_LLM_API_KEY:
-        headers["Authorization"] = f"Bearer {SUMMARY_LLM_API_KEY}"
+    if SCRAPE_LLM_API_KEY:
+        headers["Authorization"] = f"Bearer {SCRAPE_LLM_API_KEY}"
 
     try:
         # Retry configuration
@@ -680,7 +681,7 @@ async def extract_info_with_llm(
                 # Make the API request using httpx
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
-                        SUMMARY_LLM_BASE_URL,
+                        SCRAPE_LLM_BASE_URL,
                         headers=headers,
                         json=payload,
                         timeout=httpx.Timeout(None, connect=30, read=300),

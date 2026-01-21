@@ -129,8 +129,8 @@ class PipelineManager:
         overrides = []
 
         # LLM configuration
-        llm_provider = os.getenv("DEFAULT_LLM_PROVIDER", "qwen")
-        model_name = os.getenv("DEFAULT_MODEL_NAME", "MiroThinker")
+        llm_provider = os.getenv("DEFAULT_LLM_PROVIDER", "mirothinker")
+        model_name = os.getenv("DEFAULT_MODEL_NAME", "mirothinker")
         agent_set = os.getenv("DEFAULT_AGENT_SET", "demo")
         base_url = os.getenv("BASE_URL", "http://localhost:11434")
         api_key = os.getenv("API_KEY", "")
@@ -139,12 +139,13 @@ class PipelineManager:
         max_turns = os.getenv("MAX_TURNS", "")  # Empty string means use config file default
 
         # Map provider to config file
+        # Note: For custom models, use model_name directly as config name
         provider_config_map = {
             "anthropic": "claude-3-7",
-            "openai": "gpt-5",
+            "openai": model_name,  # Use model_name for openai provider
             "qwen": "qwen-3",
         }
-        llm_config = provider_config_map.get(llm_provider, "qwen-3")
+        llm_config = provider_config_map.get(llm_provider, model_name)
 
         overrides.extend(
             [

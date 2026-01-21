@@ -12,6 +12,7 @@ The pipeline orchestrates the interaction between LLM clients, tool managers,
 and the orchestrator to execute complex multi-turn agent tasks.
 """
 
+import os
 import traceback
 import uuid
 from typing import Any, Dict, List, Optional
@@ -64,9 +65,8 @@ async def execute_task_pipeline(
         sub_agent_tool_definitions: The definitions of the tools for the sub-agents (optional).
 
     Returns:
-        A tuple of (final_summary, final_boxed_answer, log_file_path, failure_experience_summary):
+        A tuple of (final_summary, log_file_path, failure_experience_summary):
         - final_summary: A string with the final execution summary, or an error message.
-        - final_boxed_answer: The extracted boxed answer from the LLM response.
         - log_file_path: The path to the saved task log file.
         - failure_experience_summary: Summary of failure experience for retry (None if successful).
     """
@@ -91,11 +91,32 @@ async def execute_task_pipeline(
         for sub_agent_tool_manager in sub_agent_tool_managers.values():
             sub_agent_tool_manager.set_task_log(task_log)
 
+    # Initialize variables outside try block to avoid NameError
+    llm_client = None
+    summary_llm_client = None
+    
     try:
         # Initialize LLM client
         random_uuid = str(uuid.uuid4())
         unique_id = f"{task_id}-{random_uuid}"
         llm_client = ClientFactory(task_id=unique_id, cfg=cfg, task_log=task_log)
+        
+        # Initialize summary LLM client if configured
+        summary_provider = os.getenv("SUMMARY_LLM_PROVIDER")
+        if summary_provider:
+            # Create a separate config for summary model
+            from omegaconf import OmegaConf
+            summary_cfg = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
+            summary_cfg.llm.provider = os.getenv("SUMMARY_LLM_PROVIDER", cfg.llm.provider)
+            summary_cfg.llm.model_name = os.getenv("SUMMARY_LLM_MODEL_NAME", cfg.llm.model_name)
+            summary_cfg.llm.base_url = os.getenv("SUMMARY_LLM_BASE_URL", cfg.llm.base_url)
+            summary_cfg.llm.api_key = os.getenv("SUMMARY_LLM_API_KEY", cfg.llm.api_key)
+            summary_llm_client = ClientFactory(task_id=f"{unique_id}-summary", cfg=summary_cfg, task_log=task_log)
+            task_log.log_step(
+                "info",
+                "Pipeline | Summary Model",
+                f"Using separate summary model: {summary_cfg.llm.provider}/{summary_cfg.llm.model_name}",
+            )
 
         # Initialize orchestrator
         orchestrator = Orchestrator(
@@ -108,21 +129,20 @@ async def execute_task_pipeline(
             stream_queue=stream_queue,
             tool_definitions=tool_definitions,
             sub_agent_tool_definitions=sub_agent_tool_definitions,
+            summary_llm_client=summary_llm_client,
         )
 
-        (
-            final_summary,
-            final_boxed_answer,
-            failure_experience_summary,
-        ) = await orchestrator.run_main_agent(
+        final_summary, failure_experience_summary = await orchestrator.run_main_agent(
             task_description=task_description,
             task_file_name=task_file_name,
             task_id=task_id,
         )
 
-        llm_client.close()
+        if llm_client:
+            llm_client.close()
+        if summary_llm_client:
+            summary_llm_client.close()
 
-        task_log.final_boxed_answer = final_boxed_answer
         task_log.status = "success"
 
         # Store failure experience summary in task log if available
@@ -134,7 +154,6 @@ async def execute_task_pipeline(
         log_file_path = task_log.save()
         return (
             final_summary,
-            final_boxed_answer,
             log_file_path,
             failure_experience_summary,
         )

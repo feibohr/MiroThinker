@@ -23,7 +23,6 @@ from ..utils.parsing_utils import extract_failure_experience_summary
 from ..utils.prompt_utils import (
     FAILURE_SUMMARY_ASSISTANT_PREFIX,
     FAILURE_SUMMARY_PROMPT,
-    FORMAT_ERROR_MESSAGE,
     generate_agent_summarize_prompt,
 )
 from ..utils.wrapper_utils import ErrorBox, ResponseBox
@@ -51,6 +50,7 @@ class AnswerGenerator:
         stream_handler: StreamHandler,
         cfg: DictConfig,
         intermediate_boxed_answers: List[str],
+        summary_llm_client: Optional[BaseClient] = None,
     ):
         """
         Initialize the answer generator.
@@ -62,8 +62,10 @@ class AnswerGenerator:
             stream_handler: Handler for streaming events
             cfg: Configuration object
             intermediate_boxed_answers: List to track intermediate answers
+            summary_llm_client: Optional separate LLM client for final summary generation
         """
         self.llm_client = llm_client
+        self.summary_llm_client = summary_llm_client or llm_client  # Use separate client if provided
         self.output_formatter = output_formatter
         self.task_log = task_log
         self.stream = stream_handler
@@ -84,6 +86,7 @@ class AnswerGenerator:
         step_id: int,
         purpose: str = "",
         agent_type: str = "main",
+        use_summary_model: bool = False,
     ) -> Tuple[Optional[str], bool, Optional[Any], List[Dict[str, Any]]]:
         """
         Unified LLM call and logging processing.
@@ -95,13 +98,17 @@ class AnswerGenerator:
             step_id: Current step ID for logging
             purpose: Description of the call purpose
             agent_type: Type of agent making the call
+            use_summary_model: Whether to use the summary-specific LLM client
 
         Returns:
             Tuple of (response_text, should_break, tool_calls_info, message_history)
         """
+        # Choose which LLM client to use
+        client = self.summary_llm_client if use_summary_model else self.llm_client
+        
         original_message_history = message_history
         try:
-            response, message_history = await self.llm_client.create_message(
+            response, message_history = await client.create_message(
                 system_prompt=system_prompt,
                 message_history=message_history,
                 tool_definitions=tool_definitions,
@@ -271,7 +278,7 @@ class AnswerGenerator:
             task_description: Original task description
 
         Returns:
-            Tuple of (final_answer_text, final_summary, final_boxed_answer, usage_log, message_history)
+            Tuple of (final_answer_text, final_summary, usage_log, message_history)
         """
         # Generate summary prompt
         summary_prompt = generate_agent_summarize_prompt(
@@ -284,7 +291,6 @@ class AnswerGenerator:
         message_history.append({"role": "user", "content": summary_prompt})
 
         final_answer_text = None
-        final_boxed_answer = None
         final_summary = ""
         usage_log = ""
 
@@ -297,38 +303,26 @@ class AnswerGenerator:
             ) = await self.handle_llm_call(
                 system_prompt,
                 message_history,
-                tool_definitions,
+                [],  # NO TOOLS - Final summary should not call any tools
                 turn_count + 1 + retry_idx,
                 f"Main agent | Final Summary (attempt {retry_idx + 1}/{self.max_final_answer_retries})",
                 agent_type="main",
+                use_summary_model=True,  # Use summary-specific model for final answer
             )
 
             if final_answer_text:
-                final_summary, final_boxed_answer, usage_log = (
+                final_summary, usage_log = (
                     self.output_formatter.format_final_summary_and_log(
-                        final_answer_text, self.llm_client
+                        final_answer_text, self.summary_llm_client
                     )
                 )
-
-                if final_boxed_answer != FORMAT_ERROR_MESSAGE:
-                    self.task_log.log_step(
-                        "info",
-                        "Main Agent | Final Answer",
-                        f"Boxed answer found on attempt {retry_idx + 1}",
-                    )
-                    break
-                else:
-                    self.task_log.log_step(
-                        "warning",
-                        "Main Agent | Final Answer",
-                        f"No boxed answer on attempt {retry_idx + 1}, retrying...",
-                    )
-                    if retry_idx < self.max_final_answer_retries - 1:
-                        if (
-                            message_history
-                            and message_history[-1]["role"] == "assistant"
-                        ):
-                            message_history.pop()
+                
+                self.task_log.log_step(
+                    "info",
+                    "Main Agent | Final Answer",
+                    f"Final answer generated on attempt {retry_idx + 1}",
+                )
+                break
             else:
                 self.task_log.log_step(
                     "warning",
@@ -339,14 +333,9 @@ class AnswerGenerator:
                     if message_history and message_history[-1]["role"] == "assistant":
                         message_history.pop()
 
-        # Ensure final_boxed_answer is never None
-        if final_boxed_answer is None:
-            final_boxed_answer = FORMAT_ERROR_MESSAGE
-
         return (
             final_answer_text,
             final_summary,
-            final_boxed_answer,
             usage_log,
             message_history,
         )
@@ -355,8 +344,7 @@ class AnswerGenerator:
         self,
         final_answer_text: Optional[str],
         final_summary: str,
-        final_boxed_answer: Optional[str],
-    ) -> Tuple[str, str, str]:
+    ) -> Tuple[str, str]:
         """
         Handle fallback when context_compress_limit == 0 (no context management).
 
@@ -366,16 +354,14 @@ class AnswerGenerator:
         Args:
             final_answer_text: The generated final answer text
             final_summary: The final summary
-            final_boxed_answer: The extracted boxed answer
 
         Returns:
-            Tuple of (final_answer_text, final_summary, final_boxed_answer)
+            Tuple of (final_answer_text, final_summary)
         """
         # Validate final_answer_text
         if not final_answer_text:
             final_answer_text = "No final answer generated."
             final_summary = final_answer_text
-            final_boxed_answer = FORMAT_ERROR_MESSAGE
             self.task_log.log_step(
                 "error",
                 "Main Agent | Final Answer",
@@ -388,29 +374,13 @@ class AnswerGenerator:
                 f"Final answer content:\n\n{final_answer_text}",
             )
 
-        # Fallback to intermediate answer if no valid boxed answer
-        if (
-            final_boxed_answer == FORMAT_ERROR_MESSAGE or final_boxed_answer is None
-        ) and self.intermediate_boxed_answers:
-            final_boxed_answer = self.intermediate_boxed_answers[-1]
-            self.task_log.log_step(
-                "info",
-                "Main Agent | Final Answer (No Context Management)",
-                f"Using intermediate boxed answer as fallback: {final_boxed_answer}",
-            )
-
-        # Ensure final_boxed_answer is never None
-        if final_boxed_answer is None:
-            final_boxed_answer = FORMAT_ERROR_MESSAGE
-
-        return final_answer_text, final_summary, final_boxed_answer
+        return final_answer_text, final_summary
 
     def handle_context_management_no_fallback(
         self,
         final_answer_text: Optional[str],
         final_summary: str,
-        final_boxed_answer: Optional[str],
-    ) -> Tuple[str, str, str]:
+    ) -> Tuple[str, str]:
         """
         Handle failure when context_compress_limit > 0 (context management enabled).
 
@@ -422,16 +392,14 @@ class AnswerGenerator:
         Args:
             final_answer_text: The generated final answer text
             final_summary: The final summary
-            final_boxed_answer: The extracted boxed answer
 
         Returns:
-            Tuple of (final_answer_text, final_summary, final_boxed_answer)
+            Tuple of (final_answer_text, final_summary)
         """
         # Validate final_answer_text
         if not final_answer_text:
             final_answer_text = "No final answer generated."
             final_summary = final_answer_text
-            final_boxed_answer = FORMAT_ERROR_MESSAGE
             self.task_log.log_step(
                 "error",
                 "Main Agent | Final Answer",
@@ -444,19 +412,7 @@ class AnswerGenerator:
                 f"Final answer content:\n\n{final_answer_text}",
             )
 
-        # Ensure final_boxed_answer is never None
-        if final_boxed_answer is None:
-            final_boxed_answer = FORMAT_ERROR_MESSAGE
-
-        # With context management, do NOT fallback to intermediate answers
-        if final_boxed_answer == FORMAT_ERROR_MESSAGE:
-            self.task_log.log_step(
-                "info",
-                "Main Agent | Final Answer (Context Management Mode)",
-                "No valid boxed answer found. Not using intermediate fallback - will generate failure summary for retry.",
-            )
-
-        return final_answer_text, final_summary, final_boxed_answer
+        return final_answer_text, final_summary
 
     async def generate_and_finalize_answer(
         self,
@@ -467,7 +423,7 @@ class AnswerGenerator:
         task_description: str,
         reached_max_turns: bool = False,
         save_callback=None,
-    ) -> Tuple[str, str, Optional[str], str, List[Dict[str, Any]]]:
+    ) -> Tuple[str, Optional[str], str, List[Dict[str, Any]]]:
         """
         Generate final answer and handle fallback based on context management settings.
 
@@ -478,8 +434,8 @@ class AnswerGenerator:
 
         | Context Management | Reached Max Turns | Behavior                                    |
         |--------------------|-------------------|---------------------------------------------|
-        | OFF (limit=0)      | No                | Generate answer → fallback to intermediate  |
-        | OFF (limit=0)      | Yes               | Generate answer → fallback to intermediate  |
+        | OFF (limit=0)      | No                | Generate answer                             |
+        | OFF (limit=0)      | Yes               | Generate answer                             |
         | ON  (limit>0)      | No                | Generate answer → no fallback, fail summary |
         | ON  (limit>0)      | Yes               | SKIP generation → fail summary directly     |
 
@@ -493,43 +449,18 @@ class AnswerGenerator:
             save_callback: Optional callback to save message history
 
         Returns:
-            Tuple of (final_answer_text, final_boxed_answer, failure_experience_summary, usage_log, message_history)
+            Tuple of (final_answer_text, failure_experience_summary, usage_log, message_history)
             - final_answer_text: Complete LLM response (for frontend display)
-            - final_boxed_answer: Extracted boxed content (for logging and evaluation)
         """
         context_management_enabled = self.context_compress_limit > 0
         failure_experience_summary = None
         usage_log = ""
 
-        # CASE: Context management ON + reached max turns
-        # Skip answer generation entirely - any answer would be a blind guess
-        if context_management_enabled and reached_max_turns:
-            self.task_log.log_step(
-                "info",
-                "Main Agent | Final Answer (Context Management Mode)",
-                "Reached max turns. Skipping answer generation to avoid blind guessing.",
-            )
-
-            if save_callback:
-                save_callback(system_prompt, message_history)
-
-            failure_experience_summary = await self.generate_failure_summary(
-                system_prompt, message_history, tool_definitions, turn_count
-            )
-
-            return (
-                "Task incomplete - reached maximum turns. Will retry with failure experience.",
-                FORMAT_ERROR_MESSAGE,
-                failure_experience_summary,
-                usage_log,
-                message_history,
-            )
-
-        # ALL OTHER CASES: Generate final answer first
+        # IMPORTANT: Always generate final answer, even when reaching max turns
+        # The LLM should provide a summary based on what it has gathered so far
         (
             final_answer_text,
             final_summary,
-            final_boxed_answer,
             usage_log,
             message_history,
         ) = await self.generate_final_answer_with_retries(
@@ -544,37 +475,46 @@ class AnswerGenerator:
             save_callback(system_prompt, message_history)
 
         # CASE: Context management OFF
-        # Try to use intermediate answers as fallback to maximize accuracy
         if not context_management_enabled:
-            final_answer_text, final_summary, final_boxed_answer = (
+            final_answer_text, final_summary = (
                 self.handle_no_context_management_fallback(
-                    final_answer_text, final_summary, final_boxed_answer
+                    final_answer_text, final_summary
                 )
             )
             return (
                 final_answer_text,  # Return complete LLM response for frontend display
-                final_boxed_answer,
                 None,
                 usage_log,
                 message_history,
             )
 
-        # CASE: Context management ON + normal completion (not reached max turns)
+        # CASE: Context management ON
         # Don't use fallback - wrong guess would reduce accuracy
-        final_answer_text, final_summary, final_boxed_answer = (
+        final_answer_text, final_summary = (
             self.handle_context_management_no_fallback(
-                final_answer_text, final_summary, final_boxed_answer
+                final_answer_text, final_summary
             )
         )
 
-        if final_boxed_answer == FORMAT_ERROR_MESSAGE:
+        # If reached max turns with context management, generate failure summary for retry
+        # But still return the final_answer_text to display to user
+        if reached_max_turns:
+            self.task_log.log_step(
+                "info",
+                "Main Agent | Final Answer (Context Management Mode)",
+                "Reached max turns. Generating summary for user display and failure experience for retry.",
+            )
+            failure_experience_summary = await self.generate_failure_summary(
+                system_prompt, message_history, tool_definitions, turn_count
+            )
+        elif not final_answer_text:
+            # Normal case: no answer generated, create failure summary
             failure_experience_summary = await self.generate_failure_summary(
                 system_prompt, message_history, tool_definitions, turn_count
             )
 
         return (
             final_answer_text,  # Return complete LLM response for frontend display
-            final_boxed_answer,
             failure_experience_summary,
             usage_log,
             message_history,

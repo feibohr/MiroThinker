@@ -12,13 +12,7 @@ This module provides:
 """
 
 # ============================================================================
-# Format Error Messages
-# ============================================================================
-
-FORMAT_ERROR_MESSAGE = "No \\boxed{} content found in the final answer."
-
-# ============================================================================
-# Failure Experience Templates (for format error retry)
+# Failure Experience Templates
 # ============================================================================
 
 # Header that appears once before all failure experiences
@@ -43,18 +37,17 @@ Based on the above, you should try a different strategy this time.
 
 FAILURE_SUMMARY_PROMPT = """The task was not completed successfully. Do NOT call any tools. Provide a summary:
 
-Failure type: [incomplete / blocked / misdirected / format_missed]
+Failure type: [incomplete / blocked / misdirected]
   - incomplete: ran out of turns before finishing
   - blocked: got stuck due to tool failure or missing information
   - misdirected: went down the wrong path
-  - format_missed: found the answer but forgot to use \\boxed{}
 What happened: [describe the approach taken and why a final answer was not reached]
 Useful findings: [list any facts, intermediate results, or conclusions discovered that should be reused]"""
 
 # Assistant prefix for failure summary generation (guides model to follow structured format)
 FAILURE_SUMMARY_THINK_CONTENT = """We need to write a structured post-mortem style summary **without calling any tools**, explaining why the task was not completed, using these required sections:
 
-* **Failure type**: pick one from **incomplete / blocked / misdirected / format_missed**
+* **Failure type**: pick one from **incomplete / blocked / misdirected**
 * **What happened**: describe the approach taken and why it didn't reach a final answer
 * **Useful findings**: list any facts, intermediate results, or conclusions that can be reused"""
 
@@ -219,7 +212,49 @@ def generate_agent_specific_system_prompt(agent_type=""):
         system_prompt = """\n
 # Agent Specific Objective
 
-You are a task-solving agent that uses tools step-by-step to answer the user's question. Your goal is to provide complete, accurate and well-reasoned answers using additional tools.
+You are a task-solving agent that uses tools step-by-step to gather information for the user's question.
+
+## Your Role in This Phase:
+
+**INFORMATION GATHERING ONLY** - You are currently in the research phase, NOT the final answer phase.
+
+Your tasks:
+1. **Search** for relevant information using available tools
+2. **Browse** web pages to extract detailed facts and data
+3. **Analyze** whether you have sufficient information to answer the question
+4. **Decide** what additional information is needed
+
+## Context Handling (IMPORTANT):
+
+When conversation history or previous context is provided:
+
+❌ **DO NOT assume the previous context is relevant** - Always evaluate if it relates to the current question
+❌ **DO NOT let unrelated history pollute your answer** - Treat each question independently unless there's clear continuity
+❌ **DO NOT force connections** between unrelated topics from history
+
+✅ **DO assess relevance first** - Determine if previous context actually helps with the current question
+✅ **DO treat as reference only** - Previous context is supplementary, not mandatory
+✅ **DO start fresh** - If the current question is unrelated to history, focus solely on the new question
+
+**Example:**
+- If history discusses "商业航天" but current question asks "今天天气怎么样", ignore the history entirely
+- If history discusses "Python编程" and current question asks "如何用Python处理数据", the history may be relevant
+
+## Critical Rules:
+
+❌ DO NOT write final answers or summaries in this phase
+❌ DO NOT use heading formats (###) to structure answers
+❌ DO NOT directly answer the user's question yet
+❌ DO NOT provide conclusions or recommendations
+
+✅ DO use <think> tags to reason about what information you need
+✅ DO call tools to search and browse for information
+✅ DO analyze the information you've gathered
+✅ DO decide if you need more information or if you're ready to proceed
+
+## When to Stop:
+
+You will be explicitly asked to provide a final summary later. For now, focus ONLY on gathering comprehensive information.
 
 """
     elif agent_type == "agent-browsing" or agent_type == "browsing-agent":
@@ -239,7 +274,7 @@ def generate_agent_summarize_prompt(task_description, agent_type=""):
 
     Creates prompts that instruct agents to summarize their work and provide
     final answers. Different agent types have different summarization formats:
-    - main: Must wrap answer in \\boxed{} with strict formatting rules
+    - main: Comprehensive answer with citations
     - agent-browsing: Provides structured report of findings
 
     Args:
@@ -253,18 +288,40 @@ def generate_agent_summarize_prompt(task_description, agent_type=""):
         summarize_prompt = (
             f"Based on the information gathered above, please provide a comprehensive answer to the following question:\n\n"
             f'"{task_description}"\n\n'
+            "**CRITICAL - This is the FINAL ANSWER phase:**\n"
+            "❌ DO NOT call any tools (no <use_mcp_tool> tags)\n"
+            "❌ DO NOT request more information or suggest further searches\n"
+            "❌ DO NOT output tool call instructions or XML tags\n"
+            "✅ DO provide a direct, complete answer based on the information you already gathered\n"
+            "✅ DO synthesize and present the findings in a clear, structured format\n\n"
+            "**Context Awareness:**\n"
+            "- If previous conversation history was provided but is NOT relevant to this question, DO NOT reference it in your answer\n"
+            "- Focus your answer ONLY on the current question and the information you gathered for it\n"
+            "- Previous context is for reference only - do not force it into your answer if unrelated\n\n"
             "Please provide a complete and detailed response that:\n"
+            "- Directly answers the current question based on gathered information\n"
             "- Includes all relevant analysis and explanations\n"
             "- Cites sources appropriately using the citation format\n"
-            "- Is well-structured and easy to understand\n\n"
-            "IMPORTANT - Source Citations:\n"
-            "When referencing information from the search results above, please cite your sources using this format:\n"
-            "<researchrefsource data-ids=\"[N]\"></researchrefsource>\n"
-            "where N is the index number from the search results.\n\n"
-            "Examples:\n"
-            "- For a single source: ...这是事实<researchrefsource data-ids=\"[1]\"></researchrefsource>。\n"
-            "- For multiple sources: ...这是事实<researchrefsource data-ids=\"[1,2]\"></researchrefsource>。\n\n"
-            "Please ensure all factual information from search results includes proper citations."
+            "- Is well-structured and easy to understand\n"
+            "- Does NOT include irrelevant information from unrelated previous conversations\n"
+            "- Does NOT contain any tool call tags or instructions\n\n"
+            "⚠️ CRITICAL - Source Citation Format:\n\n"
+            "You MUST cite sources using ONLY this exact format:\n"
+            "<researchrefsource data-ids=\"[N]\"></researchrefsource>\n\n"
+            "❌ WRONG formats (DO NOT USE):\n"
+            "- [1] or [7] or [1,2] - These are INCORRECT\n"
+            "- (Source 1) - This is INCORRECT\n"
+            "- ¹ or ² - These are INCORRECT\n\n"
+            "✅ CORRECT format (MUST USE):\n"
+            "- Single source: 产值2.5万亿<researchrefsource data-ids=\"[7]\"></researchrefsource>\n"
+            "- Multiple sources: 根据数据<researchrefsource data-ids=\"[1,2,7]\"></researchrefsource>\n\n"
+            "IMPORTANT:\n"
+            "1. Place the citation tag IMMEDIATELY after the fact (before punctuation)\n"
+            "2. Use the EXACT format with angle brackets and data-ids attribute\n"
+            "3. NEVER use simple brackets like [1] or [7] in your response\n"
+            "4. Every fact from search results MUST have a citation tag\n\n"
+            "Example of correct usage:\n"
+            "For a single source<researchrefsource data-ids=\"[7]\"></researchrefsource>，预计2030年可达10万亿<researchrefsource data-ids=\"[3,7]\"></researchrefsource>。"
         )
     elif agent_type == "agent-browsing":
         summarize_prompt = (

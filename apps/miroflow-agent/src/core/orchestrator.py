@@ -102,6 +102,7 @@ class Orchestrator:
         stream_queue: Optional[Any] = None,
         tool_definitions: Optional[List[Dict[str, Any]]] = None,
         sub_agent_tool_definitions: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        summary_llm_client: Optional[BaseClient] = None,
     ):
         """
         Initialize the orchestrator.
@@ -116,10 +117,12 @@ class Orchestrator:
             stream_queue: Optional async queue for streaming events
             tool_definitions: Pre-fetched tool definitions (optional)
             sub_agent_tool_definitions: Pre-fetched sub-agent tool definitions (optional)
+            summary_llm_client: Optional separate LLM client for final summary generation
         """
         self.main_agent_tool_manager = main_agent_tool_manager
         self.sub_agent_tool_managers = sub_agent_tool_managers
         self.llm_client = llm_client
+        self.summary_llm_client = summary_llm_client
         self.output_formatter = output_formatter
         self.cfg = cfg
         self.task_log = task_log
@@ -135,9 +138,8 @@ class Orchestrator:
         # Pass task_log to llm_client
         if self.llm_client and task_log:
             self.llm_client.task_log = task_log
-
-        # Track intermediate answers (legacy, kept for compatibility)
-        self.intermediate_boxed_answers: List[str] = []
+        if summary_llm_client and task_log:
+            summary_llm_client.task_log = task_log
 
         # Record used subtask / q / Query to detect duplicates
         self.used_queries: Dict[str, Dict[str, int]] = {}
@@ -164,7 +166,8 @@ class Orchestrator:
             task_log=task_log,
             stream_handler=self.stream,
             cfg=cfg,
-            intermediate_boxed_answers=self.intermediate_boxed_answers,
+            intermediate_boxed_answers=[],  # Empty list for backward compatibility
+            summary_llm_client=summary_llm_client,
         )
 
     def _save_message_history(
@@ -561,8 +564,15 @@ class Orchestrator:
                             )
                             break
 
+                    # Send tool result with original arguments preserved
+                    # This ensures the adapter can extract keyword from arguments
+                    result_payload = {"result": result}
+                    # Preserve original arguments for search tools
+                    if tool_name in ["google_search", "sogou_search"]:
+                        result_payload.update(arguments)
+                    
                     await self.stream.tool_call(
-                        tool_name, {"result": result}, tool_call_id=tool_call_id
+                        tool_name, result_payload, tool_call_id=tool_call_id
                     )
                     call_end_time = time.time()
                     call_duration_ms = int((call_end_time - call_start_time) * 1000)
@@ -745,7 +755,7 @@ class Orchestrator:
             task_id: Unique identifier for the task
 
         Returns:
-            Tuple of (final_summary, final_boxed_answer, failure_experience_summary)
+            Tuple of (final_answer_text, failure_experience_summary)
         """
         workflow_id = await self.stream.start_workflow(task_description)
 
@@ -839,9 +849,6 @@ class Orchestrator:
                 text_response = extract_llm_response_text(assistant_response_text)
                 if text_response:
                     await self.stream.tool_call("show_text", {"text": text_response})
-
-                # Legacy: Extract boxed content (kept for compatibility)
-                # No longer used for frontend display
 
                 if should_break:
                     self.task_log.log_step(
@@ -1027,8 +1034,15 @@ class Orchestrator:
                                 )
                                 break
 
+                        # Send tool result with original arguments preserved
+                        # This ensures the adapter can extract keyword from arguments
+                        result_payload = {"result": result}
+                        # Preserve original arguments for search tools
+                        if tool_name in ["google_search", "sogou_search"]:
+                            result_payload.update(arguments)
+                        
                         await self.stream.tool_call(
-                            tool_name, {"result": result}, tool_call_id=tool_call_id
+                            tool_name, result_payload, tool_call_id=tool_call_id
                         )
 
                     call_end_time = time.time()
@@ -1155,7 +1169,6 @@ class Orchestrator:
         # Generate final answer using answer generator
         (
             final_answer_text,  # Complete LLM response (for frontend display)
-            final_boxed_answer,  # Extracted boxed content (for logging)
             failure_experience_summary,
             usage_log,
             message_history,
@@ -1179,19 +1192,11 @@ class Orchestrator:
             "info", "Main Agent | Usage Calculation", f"Usage log: {usage_log}"
         )
 
-        # Legacy: Log final answer summary (kept for compatibility)
-        if final_boxed_answer:
-            self.task_log.log_step(
-                "info",
-                "Main Agent | Final Answer Summary",
-                f"Answer summary:\n\n{final_boxed_answer}",
-            )
-
         self.task_log.log_step(
             "info",
             "Main Agent | Task Completed",
             f"Main agent task {task_id} completed successfully",
         )
         gc.collect()
-        # Return final_answer_text (complete response) instead of final_summary (formatted log)
-        return final_answer_text, final_boxed_answer, failure_experience_summary
+        # Return final_answer_text (complete response)
+        return final_answer_text, failure_experience_summary

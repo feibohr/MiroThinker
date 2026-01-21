@@ -33,11 +33,15 @@ PORT=${PORT:-8000}
 echo ""
 echo "✅ Configuration:"
 echo "   - Port: $PORT"
-echo "   - LLM Provider: ${DEFAULT_LLM_PROVIDER:-qwen}"
+echo "   - LLM Provider: ${DEFAULT_LLM_PROVIDER:-mirothinker}"
 echo "   - Model: ${DEFAULT_MODEL_NAME:-mirothinker}"
 echo "   - Base URL: ${BASE_URL:-http://localhost:11434/v1}"
 echo "   - Agent Set: ${DEFAULT_AGENT_SET:-demo}"
 echo "   - Max Turns: ${MAX_TURNS:-20 (from config file)}"
+if [ -n "$SUMMARY_LLM_PROVIDER" ]; then
+    echo "   - Summary Provider: ${SUMMARY_LLM_PROVIDER}"
+    echo "   - Summary Model: ${SUMMARY_MODEL_NAME:-gpt-4o}"
+fi
 echo ""
 
 # Start server

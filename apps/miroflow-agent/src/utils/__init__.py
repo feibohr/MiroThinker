@@ -10,7 +10,6 @@ from .parsing_utils import (
     safe_json_loads,
 )
 from .prompt_utils import (
-    FORMAT_ERROR_MESSAGE,
     generate_agent_specific_system_prompt,
     generate_agent_summarize_prompt,
     generate_mcp_system_prompt,
@@ -24,7 +23,6 @@ __all__ = [
     "extract_failure_experience_summary",
     "safe_json_loads",
     # prompt_utils
-    "FORMAT_ERROR_MESSAGE",
     "generate_mcp_system_prompt",
     "generate_agent_specific_system_prompt",
     "generate_agent_summarize_prompt",

@@ -1,0 +1,13 @@
+# conf/llm/mirothinker.yaml
+provider: "openai"
+model_name: "mirothinker"
+base_url: "http://192.168.56.67:17001/v1"
+api_key: ""
+async_client: false
+temperature: 1.0
+top_p: 0.95
+min_p: 0.0
+top_k: -1
+max_tokens: 10000
+max_context_length: 232144
+repetition_penalty: 1.05

@@ -61,6 +61,8 @@ class DataFilter:
         """
         Filter Google search organic results.
         Migrated from gradio-demo's filter_google_search_organic.
+        
+        Preserves title, link, and snippet for display.
         """
         result = []
         for item in organic:
@@ -68,6 +70,7 @@ class DataFilter:
                 {
                     "title": item.get("title", ""),
                     "link": item.get("link", ""),
+                    "snippet": item.get("snippet", ""),  # Preserve snippet for display
                 }
             )
         return result

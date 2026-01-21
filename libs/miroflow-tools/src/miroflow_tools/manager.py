@@ -257,11 +257,12 @@ class ToolManager(ToolManagerProtocol):
                                 tool_result = await session.call_tool(
                                     tool_name, arguments=arguments
                                 )
-                                result_content = (
-                                    tool_result.content[-1].text
-                                    if tool_result.content
-                                    else ""
-                                )
+                                # Extract result content
+                                if tool_result.content:
+                                    result_content = tool_result.content[-1].text
+                                else:
+                                    result_content = ""
+                                
                                 # post hoc check for browsing agent reading answers from hf datsets
                                 if self._should_block_hf_scraping(tool_name, arguments):
                                     result_content = "You are trying to scrape a Hugging Face dataset for answers, please do not use the scrape tool for this purpose."
@@ -288,11 +289,12 @@ class ToolManager(ToolManagerProtocol):
                                 tool_result = await session.call_tool(
                                     tool_name, arguments=arguments
                                 )
-                                result_content = (
-                                    tool_result.content[-1].text
-                                    if tool_result.content
-                                    else ""
-                                )
+                                # Extract result content - preserve full JSON for search tools
+                                if tool_result.content:
+                                    result_content = tool_result.content[-1].text
+                                else:
+                                    result_content = ""
+                                
                                 # post hoc check for browsing agent reading answers from hf datsets
                                 if self._should_block_hf_scraping(tool_name, arguments):
                                     result_content = "You are trying to scrape a Hugging Face dataset for answers, please do not use the scrape tool for this purpose."

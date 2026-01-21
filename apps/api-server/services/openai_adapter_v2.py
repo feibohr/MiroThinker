@@ -8,6 +8,7 @@ import logging
 import re
 import time
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
@@ -49,6 +50,25 @@ class OpenAIAdapterV2:
     def _generate_task_id(self) -> str:
         """Generate unique task ID"""
         return str(int(time.time() * 1000000))
+    
+    def _extract_favicon_url(self, url: str) -> str:
+        """
+        Extract favicon URL from a given URL.
+        Returns the domain + /favicon.ico
+        
+        Args:
+            url: Full URL (e.g., https://www.example.com/path/to/page)
+            
+        Returns:
+            Favicon URL (e.g., https://www.example.com/favicon.ico)
+        """
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
+            return ""
+        except Exception:
+            return ""
     
     def _extract_cited_sources(self, text: str) -> List[int]:
         """
@@ -484,78 +504,50 @@ class OpenAIAdapterV2:
                 )
                 return []  # Don't emit yet, wait for research_completed
             
-            # Check if this is thinking content or final answer
-            has_think_tags = "<think>" in text or "</think>" in text
-            
-            # If it has <think> tags, it's thinking; otherwise it's the final answer
-            is_thinking = has_think_tags
-            
+            # NOT in final summary phase - all show_text content is thinking
+            # (The real final answer will come from the Final Summary agent)
             chunks = []
             
-            if is_thinking:
-                # This is thinking content, create a COMPLETE thinking block
-                chunks = []
-                
-                think_taskid = self._generate_task_id()
-                think_index = self._next_index()
-                
-                # message_start
-                chunks.append(self.create_task_chunk(
-                    task_id=task_id,
-                    model=model,
-                    taskstat="message_start",
-                    content_type="research_think_block",
-                    task_content=json.dumps({"label": "思考过程"}),
-                    taskid=think_taskid,
-                    parent_taskid=self.root_process_taskid or "",
-                    index=think_index,
-                ))
-                
-                # message_process
-                chunks.append(self.create_task_chunk(
-                    task_id=task_id,
-                    model=model,
-                    taskstat="message_process",
-                    content_type="research_think_block",
-                    task_content=text,
-                    taskid=think_taskid,
-                    parent_taskid=self.root_process_taskid or "",
-                    index=think_index,
-                ))
-                
-                # message_result
-                chunks.append(self.create_task_chunk(
-                    task_id=task_id,
-                    model=model,
-                    taskstat="message_result",
-                    content_type="research_think_block",
-                    task_content="",
-                    taskid=think_taskid,
-                    parent_taskid=self.root_process_taskid or "",
-                    index=think_index,
-                ))
-                
-                return chunks
-            else:
-                # This is the final answer - store it to emit after research_completed
-                final_index = self._next_index()
-                
-                # Extract cited sources from the text
-                cited = self._extract_cited_sources(text)
-                if cited:
-                    self.cited_sources = cited
-                
-                self.pending_final_answer = self.create_chunk(
-                    task_id=task_id,
-                    model=model,
-                    delta={
-                        "role": "assistant",
-                        "index": final_index,
-                        "content": text
-                    },
-                    finish_reason=None,
-                )
-                return []  # Don't emit yet, wait for research_completed
+            think_taskid = self._generate_task_id()
+            think_index = self._next_index()
+            
+            # message_start
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_start",
+                content_type="research_think_block",
+                task_content=json.dumps({"label": "思考过程"}),
+                taskid=think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=think_index,
+            ))
+            
+            # message_process
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_process",
+                content_type="research_think_block",
+                task_content=text,
+                taskid=think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=think_index,
+            ))
+            
+            # message_result
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_result",
+                content_type="research_think_block",
+                task_content="",
+                taskid=think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=think_index,
+            ))
+            
+            return chunks
         
         elif tool_name == "google_search":
             # Emit search results
@@ -729,8 +721,8 @@ class OpenAIAdapterV2:
                     result_dict = json.loads(result_str) if isinstance(result_str, str) else result_str
                     # Try to get search query from result
                     keyword = result_dict.get("searchParameters", {}).get("q", "")
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to extract keyword from search result: {e}")
         
         # Extract and parse search results
         try:
@@ -741,51 +733,14 @@ class OpenAIAdapterV2:
             if not organic:
                 return chunks
             
-            # 1. Emit search keyword block
-            if keyword:
-                keyword_taskid = self._generate_task_id()
-                keyword_index = self._next_index()
-                
-                chunks.append(self.create_task_chunk(
-                    task_id=task_id,
-                    model=model,
-                    taskstat="message_start",
-                    content_type="research_web_search_keyword",
-                    task_content=json.dumps({"label": f"搜索：{keyword}", "keyword": keyword}),
-                    taskid=keyword_taskid,
-                    parent_taskid=self.root_process_taskid or "",
-                    index=keyword_index,
-                ))
-                
-                chunks.append(self.create_task_chunk(
-                    task_id=task_id,
-                    model=model,
-                    taskstat="message_process",
-                    content_type="research_web_search_keyword",
-                    task_content="",
-                    taskid=keyword_taskid,
-                    parent_taskid=self.root_process_taskid or "",
-                    index=keyword_index,
-                ))
-                
-                chunks.append(self.create_task_chunk(
-                    task_id=task_id,
-                    model=model,
-                    taskstat="message_result",
-                    content_type="research_web_search_keyword",
-                    task_content="",
-                    taskid=keyword_taskid,
-                    parent_taskid=self.root_process_taskid or "",
-                    index=keyword_index,
-                ))
-            
-            # 2. Create search results block
+            # Create search results block
             search_taskid = self._generate_task_id()
             search_index = self._next_index()
             
             # First process search results with deduplication
             results_lines = []
             unique_count = 0
+            
             for item in organic[:20]:  # Check more items to get 10 unique ones
                 link = item.get("link", "")
                 
@@ -798,21 +753,22 @@ class OpenAIAdapterV2:
                 unique_count += 1
                 
                 title = item.get("title", "No title")
-                snippet = item.get("snippet", "") or item.get("description", "")
+                snippet = item.get("snippet", "")
+                icon = self._extract_favicon_url(link)
                 
                 result_json = json.dumps({
                     "index": unique_count,
                     "title": title,
                     "link": link,
-                    "snippet": snippet
+                    "snippet": snippet,
+                    "icon": icon
                 }, ensure_ascii=False)
                 results_lines.append(result_json)
                 
                 # Stop after 10 unique results
                 if unique_count >= 10:
                     break
-            
-            # Build label with keyword and actual unique count
+
             if keyword:
                 search_label = f"搜索 {keyword}，搜索到相关网页 {unique_count} 个"
             else:

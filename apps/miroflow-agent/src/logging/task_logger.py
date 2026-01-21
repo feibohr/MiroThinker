@@ -162,7 +162,7 @@ class TaskLog:
     task_id: str = ""
     input: Any = None
     ground_truth: str = ""
-    final_boxed_answer: str = ""
+    # Removed: final_boxed_answer (no longer used)
     final_judge_result: str = ""
     judge_type: str = ""
     eval_details: Optional[Dict[str, Any]] = None  # For DeepSearchQA metrics
