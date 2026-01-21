@@ -278,7 +278,7 @@ class AnswerGenerator:
             task_description,
             agent_type="main",
         )
-
+        
         if message_history[-1]["role"] == "user":
             message_history.pop(-1)
         message_history.append({"role": "user", "content": summary_prompt})
@@ -493,7 +493,9 @@ class AnswerGenerator:
             save_callback: Optional callback to save message history
 
         Returns:
-            Tuple of (final_summary, final_boxed_answer, failure_experience_summary, usage_log, message_history)
+            Tuple of (final_answer_text, final_boxed_answer, failure_experience_summary, usage_log, message_history)
+            - final_answer_text: Complete LLM response (for frontend display)
+            - final_boxed_answer: Extracted boxed content (for logging and evaluation)
         """
         context_management_enabled = self.context_compress_limit > 0
         failure_experience_summary = None
@@ -550,7 +552,7 @@ class AnswerGenerator:
                 )
             )
             return (
-                final_summary,
+                final_answer_text,  # Return complete LLM response for frontend display
                 final_boxed_answer,
                 None,
                 usage_log,
@@ -571,7 +573,7 @@ class AnswerGenerator:
             )
 
         return (
-            final_summary,
+            final_answer_text,  # Return complete LLM response for frontend display
             final_boxed_answer,
             failure_experience_summary,
             usage_log,

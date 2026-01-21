@@ -136,7 +136,7 @@ class Orchestrator:
         if self.llm_client and task_log:
             self.llm_client.task_log = task_log
 
-        # Track boxed answers extracted during main loop turns
+        # Track intermediate answers (legacy, kept for compatibility)
         self.intermediate_boxed_answers: List[str] = []
 
         # Record used subtask / q / Query to detect duplicates
@@ -840,12 +840,8 @@ class Orchestrator:
                 if text_response:
                     await self.stream.tool_call("show_text", {"text": text_response})
 
-                # Extract boxed content
-                boxed_content = self.output_formatter._extract_boxed_content(
-                    assistant_response_text
-                )
-                if boxed_content:
-                    self.intermediate_boxed_answers.append(boxed_content)
+                # Legacy: Extract boxed content (kept for compatibility)
+                # No longer used for frontend display
 
                 if should_break:
                     self.task_log.log_step(
@@ -1158,8 +1154,8 @@ class Orchestrator:
 
         # Generate final answer using answer generator
         (
-            final_summary,
-            final_boxed_answer,
+            final_answer_text,  # Complete LLM response (for frontend display)
+            final_boxed_answer,  # Extracted boxed content (for logging)
             failure_experience_summary,
             usage_log,
             message_history,
@@ -1173,7 +1169,8 @@ class Orchestrator:
             save_callback=self._save_message_history,
         )
 
-        await self.stream.tool_call("show_text", {"text": final_boxed_answer})
+        # Send complete answer to frontend (includes citations)
+        await self.stream.tool_call("show_text", {"text": final_answer_text})
         await self.stream.end_llm("Final Summary")
         await self.stream.end_agent("Final Summary", self.current_agent_id)
         await self.stream.end_workflow(workflow_id)
@@ -1182,11 +1179,13 @@ class Orchestrator:
             "info", "Main Agent | Usage Calculation", f"Usage log: {usage_log}"
         )
 
-        self.task_log.log_step(
-            "info",
-            "Main Agent | Final boxed answer",
-            f"Final boxed answer:\n\n{final_boxed_answer}",
-        )
+        # Legacy: Log final answer summary (kept for compatibility)
+        if final_boxed_answer:
+            self.task_log.log_step(
+                "info",
+                "Main Agent | Final Answer Summary",
+                f"Answer summary:\n\n{final_boxed_answer}",
+            )
 
         self.task_log.log_step(
             "info",
@@ -1194,4 +1193,5 @@ class Orchestrator:
             f"Main agent task {task_id} completed successfully",
         )
         gc.collect()
-        return final_summary, final_boxed_answer, failure_experience_summary
+        # Return final_answer_text (complete response) instead of final_summary (formatted log)
+        return final_answer_text, final_boxed_answer, failure_experience_summary

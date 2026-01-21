@@ -17,6 +17,15 @@ SUMMARY_LLM_BASE_URL = os.environ.get("SUMMARY_LLM_BASE_URL")
 SUMMARY_LLM_MODEL_NAME = os.environ.get("SUMMARY_LLM_MODEL_NAME")
 SUMMARY_LLM_API_KEY = os.environ.get("SUMMARY_LLM_API_KEY")
 
+# Ensure SUMMARY_LLM_BASE_URL has the correct endpoint
+if SUMMARY_LLM_BASE_URL:
+    # If URL ends with /v1, append /chat/completions
+    if SUMMARY_LLM_BASE_URL.rstrip("/").endswith("/v1"):
+        SUMMARY_LLM_BASE_URL = SUMMARY_LLM_BASE_URL.rstrip("/") + "/chat/completions"
+    # If URL doesn't end with /chat/completions, append it
+    elif not SUMMARY_LLM_BASE_URL.endswith("/chat/completions"):
+        SUMMARY_LLM_BASE_URL = SUMMARY_LLM_BASE_URL.rstrip("/") + "/chat/completions"
+
 JINA_API_KEY = os.environ.get("JINA_API_KEY", "")
 JINA_BASE_URL = os.environ.get("JINA_BASE_URL", "https://r.jina.ai")
 

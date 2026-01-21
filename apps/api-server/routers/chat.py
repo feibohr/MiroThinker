@@ -269,20 +269,10 @@ async def _stream_chat_completion_v2(
                 # are output as a complete group without other task blocks interleaving.
                 # Each event's chunks are output atomically to maintain ordering.
                 for chunk in chunks:
-                    # Filter out assistant outputs with <think> tags (should be handled as research_think_block)
-                    chunk_dict = chunk.model_dump()
-                    delta = chunk_dict.get("choices", [{}])[0].get("delta", {})
-                    
-                    # Skip assistant role outputs that contain <think> tags
-                    if delta.get("role") == "assistant" and delta.get("content"):
-                        content = delta.get("content", "")
-                        if "<think>" in content or "</think>" in content:
-                            logger.warning(f"Filtered assistant output with <think> tags (length: {len(content)})")
-                            continue
-                    
+                    # No filtering needed - adapter layer has already properly classified content
+                    # - Thinking content → research_think_block (with taskstat, content_type, etc.)
+                    # - Final answer → role="assistant" (standard OpenAI format)
                     # Yield chunk immediately to ensure sequential output
-                    # This guarantees that all chunks from a single event are output together,
-                    # maintaining the order: message_start -> message_process -> message_result
                     yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
         # Send final chunk with finish reason

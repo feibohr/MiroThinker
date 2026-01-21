@@ -14,6 +14,10 @@ TOOL_RESULT_MAX_LENGTH = 100_000
 
 class OutputFormatter:
     """Formatter for processing and formatting agent outputs."""
+    
+    def __init__(self):
+        """Initialize OutputFormatter with URL deduplication state."""
+        self.seen_urls = set()  # Track seen URLs for deduplication across searches
 
     def _extract_boxed_content(self, text: str) -> str:
         r"""
@@ -98,6 +102,8 @@ class OutputFormatter:
 
         Only includes necessary information (results or errors). Long results
         are truncated to TOOL_RESULT_MAX_LENGTH to prevent context overflow.
+        
+        For search results, adds index numbers to help LLM cite sources.
 
         Args:
             tool_call_execution_result: Dict containing server_name, tool_name,
@@ -115,6 +121,11 @@ class OutputFormatter:
         elif "result" in tool_call_execution_result:
             # Provide the original output result of the tool
             content = tool_call_execution_result["result"]
+            
+            # Add index numbers to search results for citation
+            if tool_name in ["google_search", "sogou_search"]:
+                content = self._add_search_result_indices(content)
+            
             # Truncate overly long results to prevent context overflow
             if len(content) > TOOL_RESULT_MAX_LENGTH:
                 content = content[:TOOL_RESULT_MAX_LENGTH] + "\n... [Result truncated]"
@@ -122,6 +133,82 @@ class OutputFormatter:
             content = f"Tool call to {tool_name} on {server_name} completed, but produced no specific output or result."
 
         return {"type": "text", "text": content}
+    
+    def _add_search_result_indices(self, search_result_json: str) -> str:
+        """
+        Add index numbers to search results for citation purposes.
+        
+        Performs URL-based deduplication to ensure indices match frontend display.
+        
+        Transforms:
+        {"organic": [{"title": "A", "link": "..."}, {"title": "B", "link": "..."}]}
+        
+        Into:
+        Search Results (cite using [index]):
+        [1] Title: A
+            Link: ...
+            Snippet: ...
+        [2] Title: B
+            Link: ...
+            Snippet: ...
+            
+        Note: Index numbers start from 1 and increment for each UNIQUE result.
+        Duplicate URLs are skipped. These indices will match the frontend display indices.
+        """
+        try:
+            import json
+            import logging
+            logger = logging.getLogger("miroflow_agent")
+            
+            data = json.loads(search_result_json)
+            
+            organic = data.get("organic", [])
+            if not organic:
+                return search_result_json  # No results, return original
+            
+            # Format results with indices, applying deduplication
+            formatted_lines = [
+                "Search Results (cite using [index]):",
+                "Note: When citing information, use the index number shown in square brackets, e.g., [1] or [1,2]."
+            ]
+            
+            unique_count = 0
+            for item in organic[:20]:  # Check more items to get enough unique results
+                link = item.get('link', '')
+                
+                # Skip if URL already seen (deduplication)
+                if link in self.seen_urls:
+                    logger.debug(f"[OUTPUT_FORMATTER] Skipping duplicate URL: {link}")
+                    continue
+                
+                # Add to seen URLs
+                self.seen_urls.add(link)
+                unique_count += 1
+                
+                # Format this result
+                title = item.get('title', 'No title')
+                snippet = item.get('snippet', item.get('description', ''))
+                
+                formatted_lines.append(f"\n[{unique_count}] Title: {title}")
+                formatted_lines.append(f"    Link: {link}")
+                if snippet:
+                    # Truncate very long snippets
+                    if len(snippet) > 200:
+                        snippet = snippet[:200] + "..."
+                    formatted_lines.append(f"    Snippet: {snippet}")
+                
+                # Stop after 10 unique results
+                if unique_count >= 10:
+                    break
+            
+            logger.info(f"[OUTPUT_FORMATTER] Formatted {unique_count} unique search results for LLM")
+            return "\n".join(formatted_lines)
+            
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            # If parsing fails, return original content
+            import logging
+            logging.getLogger("miroflow_agent").warning(f"Failed to add search indices: {e}")
+            return search_result_json
 
     def format_final_summary_and_log(
         self, final_answer_text: str, client=None

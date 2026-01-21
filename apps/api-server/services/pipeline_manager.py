@@ -134,6 +134,9 @@ class PipelineManager:
         agent_set = os.getenv("DEFAULT_AGENT_SET", "demo")
         base_url = os.getenv("BASE_URL", "http://localhost:11434")
         api_key = os.getenv("API_KEY", "")
+        
+        # Agent configuration
+        max_turns = os.getenv("MAX_TURNS", "")  # Empty string means use config file default
 
         # Map provider to config file
         provider_config_map = {
@@ -152,6 +155,15 @@ class PipelineManager:
                 f"llm.api_key={api_key}",
             ]
         )
+        
+        # Add max_turns override if specified
+        if max_turns:
+            try:
+                max_turns_int = int(max_turns)
+                overrides.append(f"agent.main_agent.max_turns={max_turns_int}")
+                logger.info(f"Override max_turns to {max_turns_int}")
+            except ValueError:
+                logger.warning(f"Invalid MAX_TURNS value: {max_turns}, using config file default")
 
         logger.debug(f"Config overrides: {overrides}")
         return overrides

@@ -36,6 +36,8 @@ echo "   - Port: $PORT"
 echo "   - LLM Provider: ${DEFAULT_LLM_PROVIDER:-qwen}"
 echo "   - Model: ${DEFAULT_MODEL_NAME:-mirothinker}"
 echo "   - Base URL: ${BASE_URL:-http://localhost:11434/v1}"
+echo "   - Agent Set: ${DEFAULT_AGENT_SET:-demo}"
+echo "   - Max Turns: ${MAX_TURNS:-20 (from config file)}"
 echo ""
 
 # Start server
