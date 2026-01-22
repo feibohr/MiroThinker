@@ -135,11 +135,18 @@ class Orchestrator:
         if sub_agent_tool_managers:
             self._list_sub_agent_tools = _list_tools(sub_agent_tool_managers)
 
-        # Pass task_log to llm_client
-        if self.llm_client and task_log:
-            self.llm_client.task_log = task_log
-        if summary_llm_client and task_log:
-            summary_llm_client.task_log = task_log
+        # Initialize helper components
+        self.stream = StreamHandler(stream_queue)
+        
+        # Pass task_log and stream_handler to llm_client
+        if self.llm_client:
+            if task_log:
+                self.llm_client.task_log = task_log
+            self.llm_client.stream_handler = self.stream
+        if summary_llm_client:
+            if task_log:
+                summary_llm_client.task_log = task_log
+            summary_llm_client.stream_handler = self.stream
 
         # Record used subtask / q / Query to detect duplicates
         self.used_queries: Dict[str, Dict[str, int]] = {}
@@ -149,9 +156,6 @@ class Orchestrator:
 
         # Context management settings
         self.context_compress_limit = cfg.agent.get("context_compress_limit", 0)
-
-        # Initialize helper components
-        self.stream = StreamHandler(stream_queue)
         self.tool_executor = ToolExecutor(
             main_agent_tool_manager=main_agent_tool_manager,
             sub_agent_tool_managers=sub_agent_tool_managers,
@@ -411,6 +415,7 @@ class Orchestrator:
             }
 
             # LLM call using answer generator
+            use_streaming = True  # Enable streaming for research phase
             (
                 assistant_response_text,
                 should_break,
@@ -423,6 +428,7 @@ class Orchestrator:
                 turn_count,
                 f"{sub_agent_name} | Turn: {turn_count}",
                 agent_type=sub_agent_name,
+                stream=use_streaming,
             )
 
             if should_break:
@@ -433,11 +439,10 @@ class Orchestrator:
                 )
                 break
 
-            if assistant_response_text:
-                text_response = extract_llm_response_text(assistant_response_text)
-                if text_response:
-                    await self.stream.tool_call("show_text", {"text": text_response})
-            else:
+            # Check if we have a valid response (text or tool calls)
+            has_valid_response = assistant_response_text or tool_calls
+            
+            if not has_valid_response:
                 self.task_log.log_step(
                     "info",
                     f"{sub_agent_name} | Turn: {turn_count} | LLM Call",
@@ -445,6 +450,12 @@ class Orchestrator:
                 )
                 await asyncio.sleep(5)
                 continue
+            
+            # Only call show_text if not streaming (when streaming, content is already sent via stream_handler)
+            if assistant_response_text and not use_streaming:
+                text_response = extract_llm_response_text(assistant_response_text)
+                if text_response:
+                    await self.stream.tool_call("show_text", {"text": text_response})
 
             # Handle no tool calls case
             if not tool_calls:
@@ -759,13 +770,13 @@ class Orchestrator:
         """
         workflow_id = await self.stream.start_workflow(task_description)
 
-        self.task_log.log_step("info", "Main Agent", f"Start task with id: {task_id}")
+        self.task_log.log_step("info", "Main Agent", f"[track_id={task_id}] Start main agent execution")
         self.task_log.log_step(
-            "info", "Main Agent", f"Task description: {task_description}"
+            "info", "Main Agent", f"[track_id={task_id}] Task description: {task_description[:500]}{'...' if len(task_description) > 500 else ''}"
         )
         if task_file_name:
             self.task_log.log_step(
-                "info", "Main Agent", f"Associated file: {task_file_name}"
+                "info", "Main Agent", f"[track_id={task_id}] Associated file: {task_file_name}"
             )
 
         # Process input
@@ -830,6 +841,7 @@ class Orchestrator:
             self.task_log.save()
 
             # LLM call
+            use_streaming = True  # Enable streaming for research phase
             (
                 assistant_response_text,
                 should_break,
@@ -842,22 +854,14 @@ class Orchestrator:
                 turn_count,
                 f"Main agent | Turn: {turn_count}",
                 agent_type="main",
+                stream=use_streaming,
             )
 
             # Process LLM response
-            if assistant_response_text:
-                text_response = extract_llm_response_text(assistant_response_text)
-                if text_response:
-                    await self.stream.tool_call("show_text", {"text": text_response})
-
-                if should_break:
-                    self.task_log.log_step(
-                        "info",
-                        f"Main Agent | Turn: {turn_count} | LLM Call",
-                        "should break is True, breaking the loop",
-                    )
-                    break
-            else:
+            # Check if we have a valid response (text or tool calls)
+            has_valid_response = assistant_response_text or tool_calls
+            
+            if not has_valid_response:
                 turn_count -= 1
                 self.task_log.log_step(
                     "warning",
@@ -866,6 +870,20 @@ class Orchestrator:
                 )
                 await asyncio.sleep(5)
                 continue
+            
+            # Only call show_text if not streaming (when streaming, content is already sent via stream_handler)
+            if assistant_response_text and not use_streaming:
+                text_response = extract_llm_response_text(assistant_response_text)
+                if text_response:
+                    await self.stream.tool_call("show_text", {"text": text_response})
+
+            if should_break:
+                self.task_log.log_step(
+                    "info",
+                    f"Main Agent | Turn: {turn_count} | LLM Call",
+                    "should break is True, breaking the loop",
+                )
+                break
 
             # Handle no tool calls case
             if not tool_calls:

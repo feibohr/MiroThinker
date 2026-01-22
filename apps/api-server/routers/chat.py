@@ -43,6 +43,9 @@ class ChatCompletionRequest(BaseModel):
     stream_options: Optional[dict] = Field(
         default=None, description="Streaming options"
     )
+    trace_id: Optional[str] = Field(
+        default=None, description="External trace ID for request tracking (optional)"
+    )
 
 
 class ChatCompletionResponse(BaseModel):
@@ -79,8 +82,11 @@ async def create_chat_completion(request_body: ChatCompletionRequest, request: R
         if not query:
             raise HTTPException(status_code=400, detail="No user message found")
 
-        # Generate task ID
-        task_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+        # Generate or use provided task ID
+        if request_body.trace_id:
+            task_id = request_body.trace_id
+        else:
+            task_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
 
         if request_body.stream:
             # Streaming mode
@@ -138,11 +144,21 @@ async def create_chat_completion_v2(request_body: ChatCompletionRequest, request
         if not query:
             raise HTTPException(status_code=400, detail="No user message found")
 
-        # Generate task ID
-        task_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+        # Generate or use provided task ID (追踪ID)
+        if request_body.trace_id:
+            # Use external trace_id if provided
+            task_id = request_body.trace_id
+            logger.info(f"[REQUEST] track_id={task_id} | source=external | user_query={query[:200]}{'...' if len(query) > 200 else ''}")
+        else:
+            # Generate new task ID
+            task_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+            logger.info(f"[REQUEST] track_id={task_id} | source=generated | user_query={query[:200]}{'...' if len(query) > 200 else ''}")
+        
+        logger.info(f"[REQUEST] track_id={task_id} | model={request_body.model} | stream={request_body.stream}")
 
         if request_body.stream:
             # Streaming mode
+            logger.info(f"[REQUEST] track_id={task_id} | Starting streaming mode")
             return StreamingResponse(
                 _stream_chat_completion_v2(
                     task_id=task_id,
@@ -159,6 +175,7 @@ async def create_chat_completion_v2(request_body: ChatCompletionRequest, request
             )
         else:
             # Non-streaming mode
+            logger.info(f"[REQUEST] track_id={task_id} | Starting non-streaming mode")
             return await _complete_chat_completion_v2(
                 task_id=task_id,
                 query=query,
@@ -167,7 +184,7 @@ async def create_chat_completion_v2(request_body: ChatCompletionRequest, request
             )
 
     except Exception as e:
-        logger.error(f"Error in chat completion v2: {e}", exc_info=True)
+        logger.error(f"[ERROR] track_id={task_id if 'task_id' in locals() else 'unknown'} | Error in chat completion v2: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -44,8 +44,18 @@ class OpenAIAdapterV2:
         self.pending_final_answer: Optional[ChatCompletionChunk] = None
         # Track seen URLs for deduplication across searches
         self.seen_urls: set = set()
+        # Cache search results for browse to reuse: {url: {title, snippet, icon}}
+        self.search_results_cache: Dict[str, Dict[str, str]] = {}
+        # Track global search result index (across multiple searches)
+        self.global_search_index: int = 0
         # Track cited source indices from the final answer
         self.cited_sources: List[int] = []
+        # Accumulate final answer content for citation extraction
+        self.final_answer_accumulated: str = ""
+        # Track current think block for streaming
+        self.current_think_taskid: Optional[str] = None
+        self.current_think_index: Optional[int] = None
+        self.current_think_started: bool = False
         
     def _generate_task_id(self) -> str:
         """Generate unique task ID"""
@@ -218,10 +228,29 @@ class OpenAIAdapterV2:
         """Handle agent start event - emit research process block (root node) only for main agent"""
         chunks = []
         
+        # If there's an ongoing think block, close it first
+        if self.current_think_started:
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_result",
+                content_type="research_think_block",
+                task_content="",
+                taskid=self.current_think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=self.current_think_index,
+            ))
+            # Reset think block state
+            self.current_think_started = False
+            self.current_think_taskid = None
+            self.current_think_index = None
+        
         # Check if this is the final summary agent
         agent_name = data.get("agent_name", "")
         if agent_name == "Final Summary":
             self.in_final_summary = True
+            # Set index for final answer streaming
+            self._final_answer_index = self._next_index()
         
         # Only create research_process_block for the first (main) agent
         # Sub-agents (like summary agent) should not create their own process blocks
@@ -277,6 +306,23 @@ class OpenAIAdapterV2:
         """Handle agent end event - emit completion block and close root (only for main agent)"""
         chunks = []
         
+        # If there's an ongoing think block, close it first
+        if self.current_think_started:
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_result",
+                content_type="research_think_block",
+                task_content="",
+                taskid=self.current_think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=self.current_think_index,
+            ))
+            # Reset think block state
+            self.current_think_started = False
+            self.current_think_taskid = None
+            self.current_think_index = None
+        
         agent_name = data.get("agent_name", "Unknown")
         
         # Only emit research_completed and root closure for the main agent
@@ -326,6 +372,18 @@ class OpenAIAdapterV2:
             chunks.append(self.root_process_chunk)
             self.root_process_chunk = None
             
+            # Extract citations from accumulated final answer (if in streaming mode)
+            if self.in_final_summary and self.final_answer_accumulated:
+                logger.info(f"[CITATION] Extracting citations from final answer (length: {len(self.final_answer_accumulated)})")
+                cited = self._extract_cited_sources(self.final_answer_accumulated)
+                if cited:
+                    self.cited_sources = cited
+                    logger.info(f"[CITATION] Extracted cited sources: {cited}")
+                else:
+                    logger.info(f"[CITATION] No citations found in final answer")
+                # Reset accumulated content
+                self.final_answer_accumulated = ""
+            
             # Finally, emit the pending final answer (after research_completed and root closure)
             if self.pending_final_answer:
                 chunks.append(self.pending_final_answer)
@@ -333,6 +391,7 @@ class OpenAIAdapterV2:
             
             # After final answer, emit research_used_sources component if we have citations
             if self.cited_sources:
+                logger.info(f"[CITATION] ✅ Emitting research_used_sources component with cited indices: {self.cited_sources}")
                 sources_taskid = self._generate_task_id()
                 sources_index = self._next_index()
                 
@@ -374,6 +433,8 @@ class OpenAIAdapterV2:
                 
                 # Reset cited sources for next query
                 self.cited_sources = []
+            else:
+                logger.info(f"[CITATION] ⚠️ No cited sources to emit")
         else:
             # This is a sub-agent or subsequent end_of_agent call
             # But if we have pending_final_answer, we should still emit it!
@@ -471,6 +532,25 @@ class OpenAIAdapterV2:
         self, task_id: str, model: str, data: dict
     ) -> Optional[List[ChatCompletionChunk]]:
         """Convert tool_call event to OpenAI chunks"""
+        chunks = []
+        
+        # If there's an ongoing think block, close it first
+        if self.current_think_started:
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_result",
+                content_type="research_think_block",
+                task_content="",
+                taskid=self.current_think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=self.current_think_index,
+            ))
+            # Reset think block state
+            self.current_think_started = False
+            self.current_think_taskid = None
+            self.current_think_index = None
+        
         tool_name = data.get("tool_name", "unknown_tool")
         tool_input = data.get("tool_input", {})
 
@@ -483,31 +563,36 @@ class OpenAIAdapterV2:
             if not text:
                 return None
             
-            # If we're in final summary phase, treat as final answer regardless of content
+            # If we're in final summary phase
             if self.in_final_summary:
-                final_index = self._next_index()
-                
-                # Extract cited sources from the text
-                cited = self._extract_cited_sources(text)
-                if cited:
-                    self.cited_sources = cited
-                
-                self.pending_final_answer = self.create_chunk(
-                    task_id=task_id,
-                    model=model,
-                    delta={
-                        "role": "assistant",
-                        "index": final_index,
-                        "content": text
-                    },
-                    finish_reason=None,
-                )
-                return []  # Don't emit yet, wait for research_completed
+                # If we have accumulated content from streaming, ignore show_text
+                # Otherwise, use show_text as fallback (when streaming is not enabled)
+                if self.final_answer_accumulated:
+                    # Streaming worked, ignore show_text
+                    return None
+                else:
+                    # Streaming didn't work, use show_text as fallback
+                    # Output in OpenAI format
+                    final_index = self._final_answer_index if hasattr(self, '_final_answer_index') else self._next_index()
+                    
+                    # Extract cited sources
+                    cited = self._extract_cited_sources(text)
+                    if cited:
+                        self.cited_sources = cited
+                    
+                    return [self.create_chunk(
+                        task_id=task_id,
+                        model=model,
+                        delta={
+                            "role": "assistant",
+                            "index": final_index,
+                            "content": text
+                        },
+                        finish_reason=None,
+                    )]
             
             # NOT in final summary phase - all show_text content is thinking
             # (The real final answer will come from the Final Summary agent)
-            chunks = []
-            
             think_taskid = self._generate_task_id()
             think_index = self._next_index()
             
@@ -551,18 +636,65 @@ class OpenAIAdapterV2:
         
         elif tool_name == "google_search":
             # Emit search results
-            return self._handle_search_tool(task_id, model, tool_input)
+            search_chunks = self._handle_search_tool(task_id, model, tool_input)
+            if search_chunks:
+                chunks.extend(search_chunks)
+            return chunks if chunks else None
         
         elif tool_name in ["scrape", "scrape_website", "scrape_and_extract_info"]:
             # Emit browse website block
-            return self._handle_scrape_tool(task_id, model, tool_input)
+            scrape_chunks = self._handle_scrape_tool(task_id, model, tool_input)
+            if scrape_chunks:
+                chunks.extend(scrape_chunks)
+            return chunks if chunks else None
         
-        return None
+        return chunks if chunks else None
 
+    def _filter_tool_call_syntax(self, content: str) -> str:
+        """
+        Filter out tool call syntax from content.
+        
+        Removes lines that look like tool calls:
+        - server_name tool_name {json}
+        - Lines containing both a server name pattern and JSON
+        """
+        if not content:
+            return content
+        
+        lines = content.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Skip lines that match tool call pattern: word word {json}
+            # Example: "search_and_scrape_webpage google_search {\"q\": \"...\"}"
+            if ' ' in line_stripped and '{' in line_stripped and '"' in line_stripped:
+                parts = line_stripped.split()
+                # Check if it looks like: server_name tool_name {json}
+                if len(parts) >= 2:
+                    # Check if line contains common server/tool name patterns
+                    if any(pattern in line_stripped for pattern in [
+                        'search_and_scrape',
+                        'google_search',
+                        'sogou_search',
+                        'scrape_website',
+                        'scrape_and_extract',
+                        'tool-python',
+                        'jina_scrape',
+                    ]):
+                        # Skip this line (it's a tool call)
+                        continue
+            
+            # Keep this line
+            filtered_lines.append(line)
+        
+        return '\n'.join(filtered_lines)
+    
     def _convert_message(
         self, task_id: str, model: str, data: dict
     ) -> Optional[List[ChatCompletionChunk]]:
-        """Convert message event to OpenAI chunks - emit as complete thinking block"""
+        """Convert message event to OpenAI chunks - streaming for both think blocks and final answer"""
         # Extract delta content
         delta = data.get("delta", {})
         content = delta.get("content", "")
@@ -571,47 +703,57 @@ class OpenAIAdapterV2:
         if not content:
             return None
         
-        # Each message event creates a COMPLETE thinking block (start, process, result)
-        # This ensures proper ordering and no cross-event accumulation
+        # Filter tool call syntax from thinking content (but not from final answer)
+        if not self.in_final_summary:
+            content = self._filter_tool_call_syntax(content)
+        
+        # If in final summary phase, output as standard OpenAI format (streaming)
+        if self.in_final_summary:
+            # Accumulate content for citation extraction
+            self.final_answer_accumulated += content
+            
+            # Return standard OpenAI streaming format
+            return [self.create_chunk(
+                task_id=task_id,
+                model=model,
+                delta={
+                    "role": "assistant",
+                    "index": self._final_answer_index if hasattr(self, '_final_answer_index') else self._next_index(),
+                    "content": content
+                },
+                finish_reason=None,
+            )]
+        
+        # Research phase: stream thinking blocks (V2 format)
         chunks = []
         
-        think_taskid = self._generate_task_id()
-        think_index = self._next_index()
+        # First message: send message_start
+        if not self.current_think_started:
+            self.current_think_started = True
+            self.current_think_taskid = self._generate_task_id()
+            self.current_think_index = self._next_index()
+            
+            chunks.append(self.create_task_chunk(
+                task_id=task_id,
+                model=model,
+                taskstat="message_start",
+                content_type="research_think_block",
+                task_content=json.dumps({"label": "思考过程"}),
+                taskid=self.current_think_taskid,
+                parent_taskid=self.root_process_taskid or "",
+                index=self.current_think_index,
+            ))
         
-        # message_start
-        chunks.append(self.create_task_chunk(
-            task_id=task_id,
-            model=model,
-            taskstat="message_start",
-            content_type="research_think_block",
-            task_content=json.dumps({"label": "思考过程"}),
-            taskid=think_taskid,
-            parent_taskid=self.root_process_taskid or "",
-            index=think_index,
-        ))
-        
-        # message_process
+        # Every message: send message_process with content
         chunks.append(self.create_task_chunk(
             task_id=task_id,
             model=model,
             taskstat="message_process",
             content_type="research_think_block",
             task_content=content,
-            taskid=think_taskid,
+            taskid=self.current_think_taskid,
             parent_taskid=self.root_process_taskid or "",
-            index=think_index,
-        ))
-        
-        # message_result
-        chunks.append(self.create_task_chunk(
-            task_id=task_id,
-            model=model,
-            taskstat="message_result",
-            content_type="research_think_block",
-            task_content="",
-            taskid=think_taskid,
-            parent_taskid=self.root_process_taskid or "",
-            index=think_index,
+            index=self.current_think_index,
         ))
         
         return chunks
@@ -752,12 +894,31 @@ class OpenAIAdapterV2:
                 self.seen_urls.add(link)
                 unique_count += 1
                 
+                # Use global search index (increments across multiple searches)
+                self.global_search_index += 1
+                result_index = self.global_search_index
+                
                 title = item.get("title", "No title")
                 snippet = item.get("snippet", "")
                 icon = self._extract_favicon_url(link)
                 
+                # Debug: Log raw search result item
+                logger.debug(f"[SEARCH_RESULT] Raw item: index={result_index}, title={title}, link={link}, snippet_len={len(snippet)}, icon={icon}")
+                
+                # Ensure title is not the same as link (防止title是URL的情况)
+                if title == link or title.startswith("http://") or title.startswith("https://"):
+                    title = "No title"
+                
+                # Cache search result for later browse reuse (including index)
+                self.search_results_cache[link] = {
+                    "index": result_index,
+                    "title": title,
+                    "snippet": snippet,
+                    "icon": icon
+                }
+                
                 result_json = json.dumps({
-                    "index": unique_count,
+                    "index": result_index,
                     "title": title,
                     "link": link,
                     "snippet": snippet,
@@ -857,27 +1018,99 @@ class OpenAIAdapterV2:
         ))
         
         # Build browse info as JSON
-        # Extract title and snippet from result
-        result = tool_input.get("result", {})
-        title = url  # Default to URL
-        snippet = ""
+        # First, try to get cached search result info
+        cached_info = self.search_results_cache.get(url, {})
+        
+        # Use cached index if available, otherwise use browse_index
+        result_index = cached_info.get("index", browse_index)
+        title = cached_info.get("title", "")
+        snippet = cached_info.get("snippet", "")
+        icon = cached_info.get("icon", "")
         sitename = ""
         
-        if isinstance(result, dict):
-            # Try to extract title from result
-            title = result.get("title", url)
-            content = result.get("content", "") or result.get("text", "")
-            if content:
-                # Use first 200 chars as snippet
-                snippet = content[:200] + "..." if len(content) > 200 else content
+        # Log if we're using cached info
+        if cached_info:
+            logger.debug(f"[BROWSE] Using cached search result for URL: {url}, index={result_index}")
         
-        # Emit browse info as JSON
+        # Extract result from tool_input (always needed for content)
+        result = tool_input.get("result", {})
+        # Parse result if it's a JSON string
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except (json.JSONDecodeError, TypeError):
+                result = {}
+        
+        # If not in cache, extract from result
+        if not title or not snippet:
+            
+            if isinstance(result, dict):
+                # Try to extract title from result
+                if not title:
+                    title = result.get("title", "")
+                
+                content = result.get("content", "") or result.get("text", "")
+                
+                # If no title, try to extract from content's first line
+                if not title and content:
+                    # Try to find title in the first few lines
+                    lines = content.strip().split('\n')
+                    for line in lines[:5]:  # Check first 5 lines
+                        line = line.strip()
+                        # Skip empty lines and very short lines
+                        if line and len(line) > 5 and len(line) < 200:
+                            # Skip lines that look like metadata or navigation
+                            if not any(skip in line.lower() for skip in ['http://', 'https://', 'cookie', 'javascript', 'login', 'sign in']):
+                                title = line
+                                break
+                
+                # If no snippet from cache, extract from content
+                if not snippet and content:
+                    # Use first 200 chars as snippet
+                    snippet = content[:200] + "..." if len(content) > 200 else content
+                
+                # Try to extract sitename from result
+                sitename = result.get("sitename", "") or result.get("site_name", "")
+        
+        # If title is still empty or is a URL, try to extract from URL or use domain
+        if not title or title == url or title.startswith("http://") or title.startswith("https://"):
+            # Try to extract a meaningful title from URL
+            from urllib.parse import urlparse, unquote
+            parsed = urlparse(url)
+            
+            # Try to use the last path segment as title
+            path_parts = [p for p in parsed.path.split('/') if p]
+            if path_parts:
+                # Use the last meaningful path segment
+                last_part = unquote(path_parts[-1])
+                # Remove file extensions
+                if '.' in last_part:
+                    last_part = last_part.rsplit('.', 1)[0]
+                # Clean up the title
+                title = last_part.replace('-', ' ').replace('_', ' ').title()
+                # Limit title length
+                if len(title) > 50:
+                    title = title[:50] + "..."
+            
+            # If still no title, use domain name
+            if not title or len(title) < 3:
+                title = parsed.netloc or "No title"
+        
+        # Extract favicon URL if not cached
+        if not icon:
+            icon = self._extract_favicon_url(url)
+        
+        # Debug: Log browse info
+        logger.debug(f"[BROWSE_INFO] title={title}, url={url}, snippet_len={len(snippet)}, icon={icon}")
+        
+        # Emit browse info as JSON (use result_index from cache if available)
         browse_info = json.dumps({
-            "index": browse_index,
+            "index": result_index,
             "title": title,
             "link": url,
             "snippet": snippet,
-            "sitename": sitename
+            "sitename": sitename,
+            "icon": icon
         }, ensure_ascii=False)
         
         chunks.append(self.create_task_chunk(

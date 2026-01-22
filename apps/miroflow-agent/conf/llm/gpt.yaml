@@ -7,3 +7,4 @@ max_tokens: 10000
 top_p: 0.95
 repetition_penalty: 1.05
 temperature: 1.0
+async_client: true

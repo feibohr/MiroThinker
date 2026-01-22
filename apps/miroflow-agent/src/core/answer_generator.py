@@ -87,6 +87,7 @@ class AnswerGenerator:
         purpose: str = "",
         agent_type: str = "main",
         use_summary_model: bool = False,
+        stream: bool = False,
     ) -> Tuple[Optional[str], bool, Optional[Any], List[Dict[str, Any]]]:
         """
         Unified LLM call and logging processing.
@@ -99,6 +100,7 @@ class AnswerGenerator:
             purpose: Description of the call purpose
             agent_type: Type of agent making the call
             use_summary_model: Whether to use the summary-specific LLM client
+            stream: Enable streaming mode for real-time response
 
         Returns:
             Tuple of (response_text, should_break, tool_calls_info, message_history)
@@ -116,6 +118,7 @@ class AnswerGenerator:
                 step_id=step_id,
                 task_log=self.task_log,
                 agent_type=agent_type,
+                stream=stream,
             )
 
             if ErrorBox.is_error_box(response):
@@ -308,6 +311,7 @@ class AnswerGenerator:
                 f"Main agent | Final Summary (attempt {retry_idx + 1}/{self.max_final_answer_retries})",
                 agent_type="main",
                 use_summary_model=True,  # Use summary-specific model for final answer
+                stream=True,  # Enable streaming for final answer
             )
 
             if final_answer_text:

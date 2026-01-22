@@ -61,6 +61,7 @@ class BaseClient(ABC):
         task_id: Unique identifier for the current task (used for tracking)
         cfg: Hydra configuration containing LLM settings
         task_log: Optional logger for recording task execution details
+        stream_handler: Optional stream handler for real-time updates
     """
 
     # Required arguments (no default value)
@@ -69,6 +70,7 @@ class BaseClient(ABC):
 
     # Optional arguments (with default value)
     task_log: Optional["TaskLog"] = None
+    stream_handler: Optional[Any] = None
 
     # Initialized in __post_init__
     client: Any = dataclasses.field(init=False)
@@ -229,6 +231,7 @@ class BaseClient(ABC):
         step_id: int = 1,
         task_log: Optional["TaskLog"] = None,
         agent_type: str = "main",
+        stream: bool = False,
     ) -> Tuple[Any, List[Dict]]:
         """
         Call LLM to generate a response with optional tool call support.
@@ -246,6 +249,7 @@ class BaseClient(ABC):
             step_id: Current step identifier for logging
             task_log: Optional logger for task execution
             agent_type: Type of agent making the call ("main" or sub-agent name)
+            stream: Enable streaming mode for real-time response
 
         Returns:
             Tuple of (response, updated_message_history)
@@ -257,6 +261,7 @@ class BaseClient(ABC):
                 message_history,
                 tool_definitions,
                 keep_tool_result=keep_tool_result,
+                stream=stream,
             )
 
         except Exception as e:

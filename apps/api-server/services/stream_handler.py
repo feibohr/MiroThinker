@@ -68,9 +68,10 @@ class StreamHandler:
         last_heartbeat_time = time.time()
 
         # Acquire pipeline instance from pool
+        logger.info(f"[PIPELINE] track_id={task_id} | Acquiring pipeline instance...")
         pipeline_instance = await self.pipeline_manager.acquire_pipeline()
         logger.info(
-            f"Acquired pipeline instance {pipeline_instance['id']} for task {task_id}"
+            f"[PIPELINE] track_id={task_id} | Acquired pipeline instance {pipeline_instance['id']}"
         )
 
         try:
@@ -176,39 +177,39 @@ class StreamHandler:
             future = executor.submit(run_pipeline_in_thread)
 
             try:
-                while True:
-                    try:
-                        message = await asyncio.wait_for(stream_queue.get(), timeout=0.1)
-                        if message is None:
-                            logger.info("Pipeline completed")
-                            break
-                        yield message
-
-                    except asyncio.TimeoutError:
-                        current_time = time.time()
-                        # Check if pipeline thread finished
-                        if future.done():
-                            try:
-                                message = stream_queue._queue.get_nowait()
-                                if message is not None:
-                                    yield message
-                                    continue
-                            except Exception:
+                    while True:
+                        try:
+                            message = await asyncio.wait_for(stream_queue.get(), timeout=0.1)
+                            if message is None:
+                                logger.info(f"[PIPELINE] track_id={task_id} | Pipeline completed")
                                 break
+                            yield message
 
-                        # Send heartbeat every 15 seconds
-                        if current_time - last_heartbeat_time >= 15:
-                            yield {
-                                "event": "heartbeat",
-                                "data": {
-                                    "timestamp": current_time,
-                                    "workflow_id": workflow_id,
-                                },
-                            }
-                            last_heartbeat_time = current_time
+                        except asyncio.TimeoutError:
+                            current_time = time.time()
+                            # Check if pipeline thread finished
+                            if future.done():
+                                try:
+                                    message = stream_queue._queue.get_nowait()
+                                    if message is not None:
+                                        yield message
+                                        continue
+                                except Exception:
+                                    break
+
+                            # Send heartbeat every 15 seconds
+                            if current_time - last_heartbeat_time >= 15:
+                                yield {
+                                    "event": "heartbeat",
+                                    "data": {
+                                        "timestamp": current_time,
+                                        "workflow_id": workflow_id,
+                                    },
+                                }
+                                last_heartbeat_time = current_time
 
             except Exception as e:
-                logger.error(f"Stream error: {e}", exc_info=True)
+                logger.error(f"[STREAM_ERROR] track_id={task_id} | {e}", exc_info=True)
                 yield {
                     "event": "error",
                     "data": {
@@ -229,6 +230,6 @@ class StreamHandler:
             # Always release pipeline instance back to pool
             self.pipeline_manager.release_pipeline(pipeline_instance)
             logger.info(
-                f"Released pipeline instance {pipeline_instance['id']} for task {task_id}"
+                f"[PIPELINE] track_id={task_id} | Released pipeline instance {pipeline_instance['id']}"
             )
 

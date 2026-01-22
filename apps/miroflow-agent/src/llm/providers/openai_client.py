@@ -17,6 +17,7 @@ Features:
 import asyncio
 import dataclasses
 import logging
+import uuid
 from typing import Any, Dict, List, Tuple, Union
 
 import tiktoken
@@ -83,6 +84,7 @@ class OpenAIClient(BaseClient):
         messages_history: List[Dict[str, Any]],
         tools_definitions,
         keep_tool_result: int = -1,
+        stream: bool = False,
     ):
         """
         Send message to OpenAI API.
@@ -130,7 +132,7 @@ class OpenAIClient(BaseClient):
                 "model": self.model_name,
                 "temperature": self.temperature,
                 "messages": messages_for_llm,
-                "stream": False,
+                "stream": stream,
                 "top_p": self.top_p,
                 "extra_body": {},
             }
@@ -155,6 +157,17 @@ class OpenAIClient(BaseClient):
                 params["extra_body"]["add_generation_prompt"] = False
 
             try:
+                # Handle streaming mode
+                if stream:
+                    response = await self._handle_streaming_response(
+                        params, messages_history, attempt, max_retries
+                    )
+                    if response:
+                        return response, messages_history
+                    # If None, continue to retry
+                    continue
+                
+                # Non-streaming mode
                 if self.async_client:
                     response = await self.client.chat.completions.create(**params)
                 else:
@@ -364,7 +377,31 @@ class OpenAIClient(BaseClient):
         """Extract tool call information from LLM response"""
         from ...utils.parsing_utils import parse_llm_response_for_tool_calls
 
-        return parse_llm_response_for_tool_calls(assistant_response_text)
+        # First, try to get tool_calls from the response object (OpenAI format)
+        if llm_response and llm_response.choices:
+            message = llm_response.choices[0].message
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                # Use the tool_calls list directly
+                self.task_log.log_step(
+                    "info",
+                    "LLM | Tool Calls Extraction",
+                    f"Found {len(message.tool_calls)} tool_calls in response object"
+                )
+                return parse_llm_response_for_tool_calls(message.tool_calls)
+        
+        # Fall back to parsing from text (for MCP XML format)
+        self.task_log.log_step(
+            "info",
+            "LLM | Tool Calls Extraction",
+            f"Parsing from text (length: {len(assistant_response_text)}, has MCP: {'<use_mcp_tool>' in assistant_response_text})"
+        )
+        tool_calls = parse_llm_response_for_tool_calls(assistant_response_text)
+        self.task_log.log_step(
+            "info",
+            "LLM | Tool Calls Extraction",
+            f"Extracted {len(tool_calls)} tool calls from text"
+        )
+        return tool_calls
 
     def update_message_history(
         self, message_history: List[Dict], all_tool_results_content_with_id: List[Tuple]
@@ -502,3 +539,211 @@ class OpenAIClient(BaseClient):
 
     def get_token_usage(self):
         return self.token_usage.copy()
+
+    async def _handle_streaming_response(
+        self,
+        params: dict,
+        messages_history: List[Dict[str, Any]],
+        attempt: int,
+        max_retries: int,
+    ):
+        """
+        Handle streaming response from OpenAI API.
+        
+        Args:
+            params: API call parameters
+            messages_history: Message history
+            attempt: Current retry attempt
+            max_retries: Maximum retry attempts
+            
+        Returns:
+            Constructed response object or None if needs retry
+        """
+        try:
+            # Create streaming request
+            if self.async_client:
+                stream = await self.client.chat.completions.create(**params)
+            else:
+                stream = self.client.chat.completions.create(**params)
+            
+            # Accumulate response
+            full_content = ""
+            finish_reason = None
+            response_id = None
+            created = None
+            model = None
+            role = None
+            
+            # Generate message ID for streaming
+            message_id = str(uuid.uuid4())
+            
+            # For collecting tool calls in streaming mode
+            tool_calls_dict = {}  # indexed by tool_call index
+            
+            # Flag to track if we've encountered tool call marker
+            tool_call_encountered = False
+            
+            # Process streaming chunks
+            chunk_count = 0
+            if self.async_client:
+                async for chunk in stream:
+                    chunk_count += 1
+                    # Debug log removed to reduce log noise
+                    # self.task_log.log_step(
+                    #     "info",
+                    #     "LLM | Stream Debug",
+                    #     f"Received chunk #{chunk_count}"
+                    # )
+                    response_id = chunk.id
+                    created = chunk.created
+                    model = chunk.model
+                    
+                    if chunk.choices and len(chunk.choices) > 0:
+                        choice = chunk.choices[0]
+                        finish_reason = choice.finish_reason
+                        
+                        # Handle content delta (support both 'content' and 'reasoning' fields)
+                        content_delta = None
+                        if choice.delta:
+                            # Standard OpenAI format uses 'content'
+                            if hasattr(choice.delta, 'content') and choice.delta.content:
+                                content_delta = choice.delta.content
+                            # Some models (like doubao) use 'reasoning' field
+                            elif hasattr(choice.delta, 'reasoning') and choice.delta.reasoning:
+                                content_delta = choice.delta.reasoning
+                        
+                        if content_delta:
+                            full_content += content_delta
+                            
+                            # Send to stream_handler if available
+                            # BUT: Stop sending when <use_mcp_tool> tag is encountered
+                            if self.stream_handler and not tool_call_encountered:
+                                # Check if we've hit the tool call marker
+                                if "<use_mcp_tool>" in full_content:
+                                    # Mark that we've encountered tool call
+                                    tool_call_encountered = True
+                                    
+                                    # Extract only the content before <use_mcp_tool>
+                                    tool_start_idx = full_content.index("<use_mcp_tool>")
+                                    # Calculate how much we've already sent
+                                    already_sent_length = len(full_content) - len(content_delta)
+                                    
+                                    if tool_start_idx > already_sent_length:
+                                        # Send only the part before <use_mcp_tool>
+                                        remaining_content = full_content[already_sent_length:tool_start_idx]
+                                        if remaining_content:
+                                            await self.stream_handler.message(
+                                                message_id=message_id,
+                                                delta_content=remaining_content
+                                            )
+                                    # Don't send anything more after this
+                                else:
+                                    # No tool call yet, send normally
+                                    await self.stream_handler.message(
+                                        message_id=message_id,
+                                        delta_content=content_delta
+                                    )
+                        
+                        # Handle role
+                        if choice.delta and choice.delta.role:
+                            role = choice.delta.role
+                        
+                        # Handle tool calls in streaming mode
+                        if choice.delta and hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
+                            for tool_call_delta in choice.delta.tool_calls:
+                                idx = tool_call_delta.index
+                                if idx not in tool_calls_dict:
+                                    tool_calls_dict[idx] = {
+                                        "id": tool_call_delta.id if hasattr(tool_call_delta, 'id') else None,
+                                        "type": tool_call_delta.type if hasattr(tool_call_delta, 'type') else "function",
+                                        "function": {
+                                            "name": "",
+                                            "arguments": ""
+                                        }
+                                    }
+                                
+                                # Accumulate function name
+                                if hasattr(tool_call_delta, 'function') and tool_call_delta.function:
+                                    if hasattr(tool_call_delta.function, 'name') and tool_call_delta.function.name:
+                                        tool_calls_dict[idx]["function"]["name"] += tool_call_delta.function.name
+                                    if hasattr(tool_call_delta.function, 'arguments') and tool_call_delta.function.arguments:
+                                        tool_calls_dict[idx]["function"]["arguments"] += tool_call_delta.function.arguments
+                    
+                    # Handle usage (usually in the last chunk)
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        self._update_token_usage(chunk.usage)
+            else:
+                # Sync client (not recommended for streaming)
+                for chunk in stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        choice = chunk.choices[0]
+                        if choice.delta and choice.delta.content:
+                            content_delta = choice.delta.content
+                            full_content += content_delta
+                    
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        self._update_token_usage(chunk.usage)
+            
+            # Check if truncated due to length
+            if finish_reason == "length":
+                if attempt < max_retries - 1:
+                    self.task_log.log_step(
+                        "warning",
+                        "LLM | Length Limit Reached",
+                        f"Streaming response truncated (attempt {attempt + 1}/{max_retries}). Will retry...",
+                    )
+                    return None  # Trigger retry
+                else:
+                    self.task_log.log_step(
+                        "warning",
+                        "LLM | Length Limit Reached - Using Truncated",
+                        "Returning truncated streaming response.",
+                    )
+            
+            # Construct complete response object (for compatibility)
+            from types import SimpleNamespace
+            
+            # Convert tool_calls_dict to list (if any)
+            tool_calls_list = None
+            if tool_calls_dict:
+                tool_calls_list = []
+                for idx in sorted(tool_calls_dict.keys()):
+                    tc = tool_calls_dict[idx]
+                    tool_call_obj = SimpleNamespace(
+                        id=tc["id"],
+                        type=tc["type"],
+                        function=SimpleNamespace(
+                            name=tc["function"]["name"],
+                            arguments=tc["function"]["arguments"]
+                        )
+                    )
+                    tool_calls_list.append(tool_call_obj)
+            
+            message = SimpleNamespace(
+                role=role or "assistant",
+                content=full_content,
+                tool_calls=tool_calls_list,
+            )
+            
+            choice = SimpleNamespace(
+                index=0,
+                message=message,
+                finish_reason=finish_reason or "stop",
+            )
+            
+            response = SimpleNamespace(
+                id=response_id,
+                created=created,
+                model=model or self.model_name,
+                choices=[choice],
+            )
+            
+            return response
+            
+        except Exception as e:
+            self.task_log.log_step(
+                "error",
+                "LLM | Streaming Error",
+                f"Error during streaming: {str(e)}",
+            )
+            return None  # Trigger retry

@@ -3,7 +3,7 @@ provider: "openai"
 model_name: "mirothinker"
 base_url: "http://192.168.56.67:17001/v1"
 api_key: ""
-async_client: false
+async_client: true
 temperature: 1.0
 top_p: 0.95
 min_p: 0.0

@@ -80,9 +80,12 @@ async def execute_task_pipeline(
         ground_truth=ground_truth,
     )
 
-    # Log task start
+    # Log task start with track_id
     task_log.log_step(
-        "info", "Main | Task Start", f"--- Starting Task Execution: {task_id} ---"
+        "info", "Main | Task Start", f"[track_id={task_id}] Starting Task Execution"
+    )
+    task_log.log_step(
+        "info", "Main | Task Query", f"[track_id={task_id}] Query: {task_description[:500]}{'...' if len(task_description) > 500 else ''}"
     )
 
     # Set task_log for all ToolManager instances
