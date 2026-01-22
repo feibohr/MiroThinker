@@ -770,9 +770,19 @@ class Orchestrator:
         """
         workflow_id = await self.stream.start_workflow(task_description)
 
+        # Extract current question from task_description
+        current_question = task_description
+        if "# Current Question" in task_description:
+            parts = task_description.split("# Current Question")
+            if len(parts) > 1:
+                current_question = parts[-1].strip()
+        
         self.task_log.log_step("info", "Main Agent", f"[track_id={task_id}] Start main agent execution")
         self.task_log.log_step(
-            "info", "Main Agent", f"[track_id={task_id}] Task description: {task_description[:500]}{'...' if len(task_description) > 500 else ''}"
+            "info", "Main Agent", f"[track_id={task_id}] Current question: {current_question[:200]}{'...' if len(current_question) > 200 else ''}"
+        )
+        self.task_log.log_step(
+            "info", "Main Agent", f"[track_id={task_id}] Full context length: {len(task_description)} chars"
         )
         if task_file_name:
             self.task_log.log_step(

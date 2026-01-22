@@ -437,50 +437,66 @@ class OpenAIAdapterV2:
                 logger.info(f"[CITATION] ⚠️ No cited sources to emit")
         else:
             # This is a sub-agent or subsequent end_of_agent call
-            # But if we have pending_final_answer, we should still emit it!
+            # IMPORTANT: Extract citations from accumulated final answer first (even if pending_final_answer is None)
+            if self.in_final_summary and self.final_answer_accumulated:
+                logger.info(f"[CITATION] (Else branch) Extracting citations from accumulated content (length: {len(self.final_answer_accumulated)})")
+                cited = self._extract_cited_sources(self.final_answer_accumulated)
+                if cited:
+                    self.cited_sources = cited
+                    logger.info(f"[CITATION] (Else branch) ✅ Found {len(cited)} unique cited sources: {cited}")
+                else:
+                    logger.info(f"[CITATION] (Else branch) ⚠️ No citations found")
+                # Reset accumulated content
+                self.final_answer_accumulated = ""
+            
+            # If we have pending_final_answer, emit it
             if self.pending_final_answer:
                 chunks.append(self.pending_final_answer)
                 self.pending_final_answer = None
+            
+            # Emit citations if available (regardless of whether pending_final_answer existed)
+            if self.cited_sources:
+                logger.info(f"[CITATION] (Else branch) ✅ Emitting research_used_sources with indices: {self.cited_sources}")
+                sources_taskid = self._generate_task_id()
+                sources_index = self._next_index()
                 
-                # Also emit citations if available
-                if self.cited_sources:
-                    sources_taskid = self._generate_task_id()
-                    sources_index = self._next_index()
-                    
-                    chunks.append(self.create_task_chunk(
-                        task_id=task_id,
-                        model=model,
-                        taskstat="message_start",
-                        content_type="research_used_sources",
-                        task_content=json.dumps({"cited": self.cited_sources}),
-                        taskid=sources_taskid,
-                        parent_taskid="",
-                        index=sources_index,
-                    ))
-                    
-                    chunks.append(self.create_task_chunk(
-                        task_id=task_id,
-                        model=model,
-                        taskstat="message_process",
-                        content_type="research_used_sources",
-                        task_content="",
-                        taskid=sources_taskid,
-                        parent_taskid="",
-                        index=sources_index,
-                    ))
-                    
-                    chunks.append(self.create_task_chunk(
-                        task_id=task_id,
-                        model=model,
-                        taskstat="message_result",
-                        content_type="research_used_sources",
-                        task_content="",
-                        taskid=sources_taskid,
-                        parent_taskid="",
-                        index=sources_index,
-                    ))
-                    
-                    self.cited_sources = []
+                chunks.append(self.create_task_chunk(
+                    task_id=task_id,
+                    model=model,
+                    taskstat="message_start",
+                    content_type="research_used_sources",
+                    task_content=json.dumps({"cited": self.cited_sources}),
+                    taskid=sources_taskid,
+                    parent_taskid="",
+                    index=sources_index,
+                ))
+                
+                chunks.append(self.create_task_chunk(
+                    task_id=task_id,
+                    model=model,
+                    taskstat="message_process",
+                    content_type="research_used_sources",
+                    task_content="",
+                    taskid=sources_taskid,
+                    parent_taskid="",
+                    index=sources_index,
+                ))
+                
+                chunks.append(self.create_task_chunk(
+                    task_id=task_id,
+                    model=model,
+                    taskstat="message_result",
+                    content_type="research_used_sources",
+                    task_content="",
+                    taskid=sources_taskid,
+                    parent_taskid="",
+                    index=sources_index,
+                ))
+                
+                # Reset for next query
+                self.cited_sources = []
+            else:
+                logger.info(f"[CITATION] (Else branch) ⚠️ No cited sources to emit")
         
         return chunks
     

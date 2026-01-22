@@ -632,6 +632,16 @@ async def extract_info_with_llm(
 
     prompt = get_prompt_with_truncation(info_to_extract, content)
 
+    # Validate model parameter
+    if not model or not model.strip():
+        return {
+            "success": False,
+            "extracted_info": "",
+            "error": "Model name is not configured (DEFAULT_MODEL_NAME environment variable is not set)",
+            "model_used": "unknown",
+            "tokens_used": 0,
+        }
+
     # Prepare the payload
     if "gpt" in model:
         payload = {
@@ -694,7 +704,8 @@ async def extract_info_with_llm(
                             continue
 
                 # Check if the request was successful
-                if (
+                # Check for context length errors (only if response.text is not None)
+                if response.text and (
                     "Requested token count exceeds the model's maximum context length"
                     in response.text
                     or "longer than the model's context length" in response.text

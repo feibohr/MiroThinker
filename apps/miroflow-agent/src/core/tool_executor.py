@@ -209,8 +209,8 @@ class ToolExecutor:
         """
         Process tool call results.
 
-        Only in demo mode: truncate scrape results to 20,000 chars
-        to support more conversation turns.
+        - For scrape_and_extract_info: parse JSON and extract extracted_info field
+        - In demo mode: truncate scrape results to 20,000 chars
 
         Args:
             tool_name: Name of the tool
@@ -219,6 +219,43 @@ class ToolExecutor:
         Returns:
             Processed tool result
         """
+        # Handle scrape_and_extract_info: parse JSON and extract extracted_info
+        if tool_name == "scrape_and_extract_info" and "result" in tool_call_result:
+            import json
+            import logging
+            logger = logging.getLogger("miroflow")
+            
+            # Print raw result for debugging
+            raw_result = tool_call_result["result"]
+            logger.info(f"[SCRAPE_DEBUG] Raw result type: {type(raw_result)}")
+            logger.info(f"[SCRAPE_DEBUG] Raw result length: {len(str(raw_result))}")
+            logger.info(f"[SCRAPE_DEBUG] Raw result preview: {str(raw_result)[:500]}")
+            
+            try:
+                # Parse the JSON string returned by the tool
+                result_json = json.loads(tool_call_result["result"])
+                
+                logger.info(f"[SCRAPE_DEBUG] Parsed JSON keys: {result_json.keys()}")
+                logger.info(f"[SCRAPE_DEBUG] Success: {result_json.get('success')}")
+                
+                # Extract the extracted_info field
+                if result_json.get("success"):
+                    extracted_info = result_json.get("extracted_info", "")
+                    logger.info(f"[SCRAPE_DEBUG] Extracted info length: {len(extracted_info)}")
+                    logger.info(f"[SCRAPE_DEBUG] Extracted info preview: {extracted_info[:500]}")
+                    # Replace result with extracted_info
+                    tool_call_result["result"] = extracted_info
+                else:
+                    # If failed, use error message
+                    error_msg = result_json.get("error", "Unknown error")
+                    logger.warning(f"[SCRAPE_DEBUG] Extraction failed: {error_msg}")
+                    tool_call_result["result"] = f"Failed to extract info: {error_msg}"
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, keep original result
+                logger.error(f"[SCRAPE_DEBUG] JSON parse error: {str(e)}")
+                tool_call_result["result"] = f"Failed to parse tool result: {str(e)}"
+        
+        # Demo mode: truncate scrape results
         if os.environ.get("DEMO_MODE") == "1":
             if "result" in tool_call_result and tool_name in [
                 "scrape",

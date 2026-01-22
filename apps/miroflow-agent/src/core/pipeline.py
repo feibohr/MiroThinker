@@ -80,12 +80,23 @@ async def execute_task_pipeline(
         ground_truth=ground_truth,
     )
 
+    # Extract current question from task_description
+    current_question = task_description
+    if "# Current Question" in task_description:
+        # Extract the part after "# Current Question"
+        parts = task_description.split("# Current Question")
+        if len(parts) > 1:
+            current_question = parts[-1].strip()
+    
     # Log task start with track_id
     task_log.log_step(
         "info", "Main | Task Start", f"[track_id={task_id}] Starting Task Execution"
     )
     task_log.log_step(
-        "info", "Main | Task Query", f"[track_id={task_id}] Query: {task_description[:500]}{'...' if len(task_description) > 500 else ''}"
+        "info", "Main | Current Question", f"[track_id={task_id}] Current question: {current_question[:200]}{'...' if len(current_question) > 200 else ''}"
+    )
+    task_log.log_step(
+        "info", "Main | Task Context", f"[track_id={task_id}] Full context length: {len(task_description)} chars"
     )
 
     # Set task_log for all ToolManager instances

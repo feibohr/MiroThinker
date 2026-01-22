@@ -82,11 +82,18 @@ async def create_chat_completion(request_body: ChatCompletionRequest, request: R
         if not query:
             raise HTTPException(status_code=400, detail="No user message found")
 
+        # Extract current question for logging
+        current_question = messages_dict[-1].get("content", "") if messages_dict else ""
+        
         # Generate or use provided task ID
         if request_body.trace_id:
             task_id = request_body.trace_id
+            logger.info(f"[REQUEST] track_id={task_id} | source=external | current_question={current_question[:200]}{'...' if len(current_question) > 200 else ''}")
         else:
             task_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+            logger.info(f"[REQUEST] track_id={task_id} | source=generated | current_question={current_question[:200]}{'...' if len(current_question) > 200 else ''}")
+        
+        logger.info(f"[REQUEST] track_id={task_id} | model={request_body.model} | stream={request_body.stream}")
 
         if request_body.stream:
             # Streaming mode
@@ -145,14 +152,17 @@ async def create_chat_completion_v2(request_body: ChatCompletionRequest, request
             raise HTTPException(status_code=400, detail="No user message found")
 
         # Generate or use provided task ID (追踪ID)
+        # Extract current question for logging (from the last message)
+        current_question = messages_dict[-1].get("content", "") if messages_dict else ""
+        
         if request_body.trace_id:
             # Use external trace_id if provided
             task_id = request_body.trace_id
-            logger.info(f"[REQUEST] track_id={task_id} | source=external | user_query={query[:200]}{'...' if len(query) > 200 else ''}")
+            logger.info(f"[REQUEST] track_id={task_id} | source=external | current_question={current_question[:200]}{'...' if len(current_question) > 200 else ''}")
         else:
             # Generate new task ID
             task_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
-            logger.info(f"[REQUEST] track_id={task_id} | source=generated | user_query={query[:200]}{'...' if len(query) > 200 else ''}")
+            logger.info(f"[REQUEST] track_id={task_id} | source=generated | current_question={current_question[:200]}{'...' if len(current_question) > 200 else ''}")
         
         logger.info(f"[REQUEST] track_id={task_id} | model={request_body.model} | stream={request_body.stream}")
 
