@@ -70,6 +70,11 @@ SUMMARY_LLM_API_KEY = os.environ.get("SUMMARY_LLM_API_KEY")
 SUMMARY_LLM_BASE_URL = os.environ.get("SUMMARY_LLM_BASE_URL")
 SUMMARY_LLM_MODEL_NAME = os.environ.get("SUMMARY_LLM_MODEL_NAME")
 
+# Main LLM configuration (for MCP tools)
+BASE_URL = os.environ.get("BASE_URL")
+DEFAULT_MODEL_NAME = os.environ.get("DEFAULT_MODEL_NAME")
+API_KEY = os.environ.get("API_KEY")
+
 
 # MCP server configuration generation function
 def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
@@ -330,6 +335,11 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
                     env={
                         "JINA_API_KEY": JINA_API_KEY,
                         "JINA_BASE_URL": JINA_BASE_URL,
+                        # Main LLM configuration for web content extraction
+                        "BASE_URL": BASE_URL,
+                        "DEFAULT_MODEL_NAME": DEFAULT_MODEL_NAME,
+                        "API_KEY": API_KEY,
+                        # Legacy SUMMARY_LLM_* for backward compatibility
                         "SUMMARY_LLM_BASE_URL": SUMMARY_LLM_BASE_URL,
                         "SUMMARY_LLM_MODEL_NAME": SUMMARY_LLM_MODEL_NAME,
                         "SUMMARY_LLM_API_KEY": SUMMARY_LLM_API_KEY,
