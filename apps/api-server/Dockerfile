@@ -20,12 +20,26 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
 # Configure uv to use PyPI mirror
 ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
-# Copy project files
-COPY apps/miroflow-agent /app/apps/miroflow-agent
-COPY apps/api-server /app/apps/api-server
+# ===== 优化：先复制依赖文件，利用 Docker 缓存 =====
+# 只复制依赖配置文件，这样依赖层可以被缓存
+COPY apps/miroflow-agent/pyproject.toml /app/apps/miroflow-agent/
+COPY apps/api-server/pyproject.toml /app/apps/api-server/
 COPY libs /app/libs
 
-# Install dependencies
+# Install miroflow-agent dependencies (这层会被缓存)
+WORKDIR /app/apps/miroflow-agent
+RUN uv sync --no-dev || true
+
+# Install api-server dependencies (这层会被缓存)
+WORKDIR /app/apps/api-server
+RUN uv sync --no-dev --no-install-project || true
+
+# ===== 然后复制源代码 =====
+# 代码变更不会导致依赖重新安装
+COPY apps/miroflow-agent /app/apps/miroflow-agent
+COPY apps/api-server /app/apps/api-server
+
+# 重新同步以确保项目安装正确
 WORKDIR /app/apps/miroflow-agent
 RUN uv sync --no-dev
 

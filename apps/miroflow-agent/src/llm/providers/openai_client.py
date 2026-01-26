@@ -85,6 +85,7 @@ class OpenAIClient(BaseClient):
         tools_definitions,
         keep_tool_result: int = -1,
         stream: bool = False,
+        is_final_summary: bool = False,
     ):
         """
         Send message to OpenAI API.
@@ -160,7 +161,7 @@ class OpenAIClient(BaseClient):
                 # Handle streaming mode
                 if stream:
                     response = await self._handle_streaming_response(
-                        params, messages_history, attempt, max_retries
+                        params, messages_history, attempt, max_retries, is_final_summary
                     )
                     if response:
                         return response, messages_history
@@ -546,6 +547,7 @@ class OpenAIClient(BaseClient):
         messages_history: List[Dict[str, Any]],
         attempt: int,
         max_retries: int,
+        is_final_summary: bool = False,
     ):
         """
         Handle streaming response from OpenAI API.
@@ -555,6 +557,7 @@ class OpenAIClient(BaseClient):
             messages_history: Message history
             attempt: Current retry attempt
             max_retries: Maximum retry attempts
+            is_final_summary: Whether this is the final summary phase (no tools available)
             
         Returns:
             Constructed response object or None if needs retry
@@ -580,9 +583,6 @@ class OpenAIClient(BaseClient):
             # For collecting tool calls in streaming mode
             tool_calls_dict = {}  # indexed by tool_call index
             
-            # Flag to track if we've encountered tool call marker
-            tool_call_encountered = False
-            
             # Process streaming chunks
             chunk_count = 0
             if self.async_client:
@@ -602,47 +602,43 @@ class OpenAIClient(BaseClient):
                         choice = chunk.choices[0]
                         finish_reason = choice.finish_reason
                         
-                        # Handle content delta (support both 'content' and 'reasoning' fields)
-                        content_delta = None
-                        if choice.delta:
-                            # Standard OpenAI format uses 'content'
-                            if hasattr(choice.delta, 'content') and choice.delta.content:
-                                content_delta = choice.delta.content
-                            # Some models (like doubao) use 'reasoning' field
-                            elif hasattr(choice.delta, 'reasoning') and choice.delta.reasoning:
-                                content_delta = choice.delta.reasoning
+                        # Handle content delta
+                        # IMPORTANT: Separate handling for 'reasoning' and 'content' fields
+                        # - 'reasoning' field: thinking process, output directly (no filtering)
+                        # - 'content' field: depends on context
+                        #   * In thinking phase (has tools): DON'T output (contains <use_mcp_tool> for param extraction)
+                        #   * In summary phase (no tools): DO output (final answer for user)
                         
-                        if content_delta:
-                            full_content += content_delta
-                            
-                            # Send to stream_handler if available
-                            # BUT: Stop sending when <use_mcp_tool> tag is encountered
-                            if self.stream_handler and not tool_call_encountered:
-                                # Check if we've hit the tool call marker
-                                if "<use_mcp_tool>" in full_content:
-                                    # Mark that we've encountered tool call
-                                    tool_call_encountered = True
-                                    
-                                    # Extract only the content before <use_mcp_tool>
-                                    tool_start_idx = full_content.index("<use_mcp_tool>")
-                                    # Calculate how much we've already sent
-                                    already_sent_length = len(full_content) - len(content_delta)
-                                    
-                                    if tool_start_idx > already_sent_length:
-                                        # Send only the part before <use_mcp_tool>
-                                        remaining_content = full_content[already_sent_length:tool_start_idx]
-                                        if remaining_content:
-                                            await self.stream_handler.message(
-                                                message_id=message_id,
-                                                delta_content=remaining_content
-                                            )
-                                    # Don't send anything more after this
-                                else:
-                                    # No tool call yet, send normally
+                        if choice.delta:
+                            # Handle reasoning field (thinking process)
+                            # This is the thinking process and should be output directly
+                            if hasattr(choice.delta, 'reasoning') and choice.delta.reasoning:
+                                reasoning_delta = choice.delta.reasoning
+                                full_content += reasoning_delta
+                                
+                                # Send reasoning content directly without filtering
+                                if self.stream_handler:
                                     await self.stream_handler.message(
                                         message_id=message_id,
-                                        delta_content=content_delta
+                                        delta_content=reasoning_delta
                                     )
+                            
+                            # Handle content field (main content)
+                            # Behavior depends on whether we're in thinking or summary phase
+                            elif hasattr(choice.delta, 'content') and choice.delta.content:
+                                content_delta = choice.delta.content
+                                full_content += content_delta
+                                
+                                # Only output content in final summary phase
+                                # In thinking phase, content contains <use_mcp_tool> tags for param extraction
+                                if is_final_summary:
+                                    # Summary phase: Output content directly (final answer)
+                                    if self.stream_handler:
+                                        await self.stream_handler.message(
+                                            message_id=message_id,
+                                            delta_content=content_delta
+                                        )
+                                # else: Thinking phase - don't output content
                         
                         # Handle role
                         if choice.delta and choice.delta.role:
@@ -677,9 +673,12 @@ class OpenAIClient(BaseClient):
                 for chunk in stream:
                     if chunk.choices and len(chunk.choices) > 0:
                         choice = chunk.choices[0]
-                        if choice.delta and choice.delta.content:
-                            content_delta = choice.delta.content
-                            full_content += content_delta
+                        # Handle both reasoning and content fields
+                        if choice.delta:
+                            if hasattr(choice.delta, 'reasoning') and choice.delta.reasoning:
+                                full_content += choice.delta.reasoning
+                            elif hasattr(choice.delta, 'content') and choice.delta.content:
+                                full_content += choice.delta.content
                     
                     if hasattr(chunk, 'usage') and chunk.usage:
                         self._update_token_usage(chunk.usage)
