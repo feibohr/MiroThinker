@@ -31,12 +31,15 @@ RUN uv sync --no-dev
 
 # Install gradio-demo dependencies
 WORKDIR /app/apps/gradio-demo
-RUN uv sync --no-dev
+RUN uv sync --no-dev --no-install-project
 
 # Copy application code (after dependencies are installed)
 COPY apps/miroflow-agent/src /app/apps/miroflow-agent/src
 COPY apps/miroflow-agent/conf /app/apps/miroflow-agent/conf
 COPY apps/gradio-demo/*.py /app/apps/gradio-demo/
+
+# Install the project itself
+RUN uv sync --no-dev
 
 # Create logs directory
 RUN mkdir -p /app/logs

@@ -1,0 +1,70 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist
+build
+*.egg
+.pytest_cache
+.coverage
+htmlcov
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Documentation (不需要打包到镜像，但保留 README.md 因为 pyproject.toml 需要)
+*.md
+!apps/*/README.md
+!libs/*/README.md
+
+# Test files (不需要打包到镜像)
+test_*.py
+test_*.sh
+**/test_*.py
+**/test_*.sh
+
+# Scripts (不需要打包到镜像)
+check_*.sh
+clean_*.sh
+clean_*.py
+fix_*.py
+*.example
+
+# Build artifacts
+daemon.json.example
+justfile
+quickstart.sh
+start-all.sh
+
+# Other apps not needed in this image
+# (根据具体构建的镜像，可以选择性排除)
+# apps/collect-trace
+# apps/visualize-trace
+# apps/lobehub-compatibility
+
+# Kubernetes configs (不需要打包到镜像)
+k8s/
+
+# Nginx configs (不需要打包到镜像)
+nginx/
+
+# Assets (如果不需要的话)
+assets/

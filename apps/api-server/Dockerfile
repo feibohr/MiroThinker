@@ -35,7 +35,12 @@ RUN uv sync --no-dev --no-install-project
 # Copy application code (after dependencies are installed)
 COPY apps/miroflow-agent/src /app/apps/miroflow-agent/src
 COPY apps/miroflow-agent/conf /app/apps/miroflow-agent/conf
-COPY apps/api-server/*.py /app/apps/api-server/
+COPY apps/api-server/main.py /app/apps/api-server/
+COPY apps/api-server/routers /app/apps/api-server/routers
+COPY apps/api-server/services /app/apps/api-server/services
+
+# Install the project itself (needed for module imports to work)
+RUN uv sync --no-dev
 
 # Create logs directory
 RUN mkdir -p /app/logs
