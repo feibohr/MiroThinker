@@ -20,17 +20,22 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
 # Configure uv to use PyPI mirror
 ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
-# Copy project files
-COPY apps/miroflow-agent /app/apps/miroflow-agent
-COPY apps/api-server /app/apps/api-server
+# Copy only dependency files first (for better layer caching)
+COPY apps/miroflow-agent/pyproject.toml apps/miroflow-agent/uv.lock apps/miroflow-agent/README.md /app/apps/miroflow-agent/
+COPY apps/api-server/pyproject.toml apps/api-server/uv.lock apps/api-server/README.md /app/apps/api-server/
 COPY libs /app/libs
 
-# Install dependencies
+# Install dependencies (this layer will be cached if dependencies don't change)
 WORKDIR /app/apps/miroflow-agent
 RUN uv sync --no-dev
 
 WORKDIR /app/apps/api-server
 RUN uv sync --no-dev --no-install-project
+
+# Copy application code (after dependencies are installed)
+COPY apps/miroflow-agent/src /app/apps/miroflow-agent/src
+COPY apps/miroflow-agent/conf /app/apps/miroflow-agent/conf
+COPY apps/api-server/*.py /app/apps/api-server/
 
 # Create logs directory
 RUN mkdir -p /app/logs

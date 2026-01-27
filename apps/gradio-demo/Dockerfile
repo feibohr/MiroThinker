@@ -20,18 +20,23 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
 # Configure uv to use PyPI mirror
 ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
-# Copy project files
-COPY apps/miroflow-agent /app/apps/miroflow-agent
-COPY apps/gradio-demo /app/apps/gradio-demo
+# Copy only dependency files first (for better layer caching)
+COPY apps/miroflow-agent/pyproject.toml apps/miroflow-agent/uv.lock apps/miroflow-agent/README.md /app/apps/miroflow-agent/
+COPY apps/gradio-demo/pyproject.toml apps/gradio-demo/uv.lock apps/gradio-demo/README.md /app/apps/gradio-demo/
 COPY libs /app/libs
 
-# Install miroflow-agent dependencies
+# Install miroflow-agent dependencies (this layer will be cached if dependencies don't change)
 WORKDIR /app/apps/miroflow-agent
 RUN uv sync --no-dev
 
 # Install gradio-demo dependencies
 WORKDIR /app/apps/gradio-demo
 RUN uv sync --no-dev
+
+# Copy application code (after dependencies are installed)
+COPY apps/miroflow-agent/src /app/apps/miroflow-agent/src
+COPY apps/miroflow-agent/conf /app/apps/miroflow-agent/conf
+COPY apps/gradio-demo/*.py /app/apps/gradio-demo/
 
 # Create logs directory
 RUN mkdir -p /app/logs

@@ -43,7 +43,6 @@ echo ""
 if [[ "$TARGET" == "api" || "$TARGET" == "all" ]]; then
     echo "📦 Building API Server..."
     docker build \
-        --no-cache \
         -f apps/api-server/Dockerfile \
         -t ${API_REGISTRY}/mirothinker-api:${TAG} \
         .
