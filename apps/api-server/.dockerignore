@@ -1,64 +1,17 @@
-# Python 虚拟环境和缓存
-.venv/
-venv/
-__pycache__/
+.venv
+__pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
-*.egg-info/
-dist/
-build/
-*.so
-
-# 日志和临时文件
+*.egg-info
+dist
+build
 *.log
-logs/
-*.tmp
-*.temp
-
-# IDE 和编辑器
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
 .DS_Store
-
-# Git 相关
-.git/
+.git
 .gitignore
-.gitattributes
-
-# 文档和测试
 *.md
 test_*.py
-tests/
-docs/
-
-# Node.js (如果有)
-node_modules/
-npm-debug.log
-yarn-error.log
-
-# 数据库和缓存
-*.db
-*.sqlite
-*.sqlite3
-.cache/
-
-# 环境变量文件（敏感信息）
-.env.local
-.env.*.local
-
-# UV 缓存
-.uv/
-uv.lock
-
-# 其他
-*.bak
-*.orig
-coverage/
-.coverage
-htmlcov/
+logs/
 

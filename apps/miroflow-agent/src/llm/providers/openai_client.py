@@ -625,7 +625,8 @@ class OpenAIClient(BaseClient):
                             
                             # Handle content field (main content)
                             # Behavior depends on whether we're in thinking or summary phase
-                            elif hasattr(choice.delta, 'content') and choice.delta.content:
+                            # Note: Use 'if' not 'elif' to handle both fields when present
+                            if hasattr(choice.delta, 'content') and choice.delta.content:
                                 content_delta = choice.delta.content
                                 full_content += content_delta
                                 
