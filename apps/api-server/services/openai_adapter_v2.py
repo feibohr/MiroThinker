@@ -657,9 +657,9 @@ class OpenAIAdapterV2:
             
             return chunks
         
-        elif tool_name == "google_search":
-            # Emit search results
-            search_chunks = self._handle_search_tool(task_id, model, tool_input)
+        elif tool_name in ["google_search", "sogou_search", "search_medical_literature", "search_clinical_guideline"]:
+            # Emit search results (Google, Sogou, Medical Literature, Clinical Guideline)
+            search_chunks = self._handle_search_tool(task_id, model, tool_input, tool_name)
             if search_chunks:
                 chunks.extend(search_chunks)
             return chunks if chunks else None
@@ -701,6 +701,10 @@ class OpenAIAdapterV2:
                         'search_and_scrape',
                         'google_search',
                         'sogou_search',
+                        'search_medical_literature',
+                        'search_clinical_guideline',
+                        'tool-medical-literature',
+                        'tool-clinical-guideline',
                         'scrape_website',
                         'scrape_and_extract',
                         'tool-python',
@@ -855,15 +859,21 @@ class OpenAIAdapterV2:
         return chunks
     
     def _handle_search_tool(
-        self, task_id: str, model: str, tool_input: dict
+        self, task_id: str, model: str, tool_input: dict, tool_name: str = "google_search"
     ) -> List[ChatCompletionChunk]:
         """
-        Handle Google search tool - emit search results as JSON Lines.
+        Handle search tools (Google, Sogou, Medical Literature, Clinical Guideline) - emit search results as JSON Lines.
         
         IMPORTANT: All chunks returned must maintain ordering:
         - Search keyword block: message_start -> message_process -> message_result
         - Then search results block: message_start -> message_process (multiple) -> message_result
         All chunks are output atomically to ensure no interleaving.
+        
+        Args:
+            task_id: Task ID
+            model: Model name
+            tool_input: Tool input containing search results
+            tool_name: Name of the search tool (google_search, sogou_search, search_medical_literature, search_clinical_guideline)
         """
         chunks = []
         
@@ -957,10 +967,20 @@ class OpenAIAdapterV2:
                 if unique_count >= 10:
                     break
 
+            # Generate search label based on tool type
+            source_label = ""
+            if tool_name == "search_medical_literature":
+                source_label = "（文献知识库）"
+            elif tool_name == "search_clinical_guideline":
+                source_label = "（指南知识库）"
+            elif tool_name == "sogou_search":
+                source_label = "（搜狗）"
+            # google_search has no label (default)
+            
             if keyword:
-                search_label = f"搜索 {keyword}，搜索到相关网页 {unique_count} 个"
+                search_label = f"搜索 {keyword}{source_label}，搜索到相关网页 {unique_count} 个"
             else:
-                search_label = f"搜索到相关网页 {unique_count} 个"
+                search_label = f"搜索到相关网页 {unique_count} 个{source_label}"
             
             # Emit message_start with count
             chunks.append(self.create_task_chunk(

@@ -23,9 +23,9 @@ class DataFilter:
             tool_name = message["data"].get("tool_name")
             tool_input = message["data"].get("tool_input")
 
-            # Filter Google search results
+            # Filter search results (Google, Sogou, Medical Literature, Clinical Guideline)
             if (
-                tool_name == "google_search"
+                tool_name in ["google_search", "sogou_search", "search_medical_literature", "search_clinical_guideline"]
                 and isinstance(tool_input, dict)
                 and "result" in tool_input
             ):
@@ -33,7 +33,7 @@ class DataFilter:
                     result_dict = json.loads(tool_input["result"])
                     if "organic" in result_dict:
                         new_result = {
-                            "organic": self._filter_google_search_organic(
+                            "organic": self._filter_search_organic(
                                 result_dict["organic"]
                             )
                         }
@@ -41,7 +41,7 @@ class DataFilter:
                             new_result, ensure_ascii=False
                         )
                 except Exception as e:
-                    logger.warning(f"Failed to filter search results: {e}")
+                    logger.warning(f"Failed to filter search results for {tool_name}: {e}")
 
             # Filter scrape results
             if (
@@ -57,22 +57,29 @@ class DataFilter:
 
         return message
 
-    def _filter_google_search_organic(self, organic: List[dict]) -> List[dict]:
+    def _filter_search_organic(self, organic: List[dict]) -> List[dict]:
         """
-        Filter Google search organic results.
-        Migrated from gradio-demo's filter_google_search_organic.
+        Filter search organic results (Google, Sogou, Medical Literature, Clinical Guideline).
         
-        Preserves title, link, and snippet for display.
+        Preserves title, link/url, and snippet for display.
+        Handles both 'link' (Google/Sogou) and 'url' (Medical tools) fields.
         """
         result = []
         for item in organic:
-            result.append(
-                {
-                    "title": item.get("title", ""),
-                    "link": item.get("link", ""),
-                    "snippet": item.get("snippet", ""),  # Preserve snippet for display
-                }
-            )
+            filtered_item = {
+                "title": item.get("title", ""),
+                "snippet": item.get("snippet", ""),  # Preserve snippet for display
+            }
+            
+            # Handle both 'link' and 'url' fields
+            if "link" in item:
+                filtered_item["link"] = item["link"]
+            elif "url" in item:
+                filtered_item["link"] = item["url"]  # Normalize to 'link' for frontend
+            else:
+                filtered_item["link"] = ""
+            
+            result.append(filtered_item)
         return result
 
     def _is_scrape_error(self, result: str) -> bool:

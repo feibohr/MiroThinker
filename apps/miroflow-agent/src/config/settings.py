@@ -75,6 +75,12 @@ BASE_URL = os.environ.get("BASE_URL")
 DEFAULT_MODEL_NAME = os.environ.get("DEFAULT_MODEL_NAME")
 API_KEY = os.environ.get("API_KEY")
 
+# API for Medical Search (Literature and Guidelines)
+MEDICAL_SEARCH_API_KEY = os.environ.get("MEDICAL_SEARCH_API_KEY")
+MEDICAL_SEARCH_BASE_URL = os.environ.get(
+    "MEDICAL_SEARCH_BASE_URL", "https://studio.sinohealth.cn/v1/datasets/medical/search"
+)
+
 
 # MCP server configuration generation function
 def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
@@ -386,6 +392,58 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
                         "miroflow_tools.dev_mcp_servers.task_planner",
                     ],
                     env={"TASK_ID": todo_task_id},
+                ),
+            }
+        )
+
+    if (
+        agent_cfg.get("tools", None) is not None
+        and "tool-medical-literature" in agent_cfg["tools"]
+    ):
+        if not MEDICAL_SEARCH_API_KEY:
+            raise ValueError(
+                "MEDICAL_SEARCH_API_KEY not set, tool-medical-literature will be unavailable."
+            )
+
+        configs.append(
+            {
+                "name": "tool-medical-literature",
+                "params": StdioServerParameters(
+                    command=sys.executable,
+                    args=[
+                        "-m",
+                        "miroflow_tools.mcp_servers.medical_literature_mcp_server",
+                    ],
+                    env={
+                        "MEDICAL_SEARCH_API_KEY": MEDICAL_SEARCH_API_KEY,
+                        "MEDICAL_SEARCH_BASE_URL": MEDICAL_SEARCH_BASE_URL,
+                    },
+                ),
+            }
+        )
+
+    if (
+        agent_cfg.get("tools", None) is not None
+        and "tool-clinical-guideline" in agent_cfg["tools"]
+    ):
+        if not MEDICAL_SEARCH_API_KEY:
+            raise ValueError(
+                "MEDICAL_SEARCH_API_KEY not set, tool-clinical-guideline will be unavailable."
+            )
+
+        configs.append(
+            {
+                "name": "tool-clinical-guideline",
+                "params": StdioServerParameters(
+                    command=sys.executable,
+                    args=[
+                        "-m",
+                        "miroflow_tools.mcp_servers.clinical_guideline_mcp_server",
+                    ],
+                    env={
+                        "MEDICAL_SEARCH_API_KEY": MEDICAL_SEARCH_API_KEY,
+                        "MEDICAL_SEARCH_BASE_URL": MEDICAL_SEARCH_BASE_URL,
+                    },
                 ),
             }
         )

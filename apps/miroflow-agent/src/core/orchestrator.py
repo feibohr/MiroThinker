@@ -579,7 +579,7 @@ class Orchestrator:
                     # This ensures the adapter can extract keyword from arguments
                     result_payload = {"result": result}
                     # Preserve original arguments for search tools
-                    if tool_name in ["google_search", "sogou_search"]:
+                    if tool_name in ["google_search", "sogou_search", "search_medical_literature", "search_clinical_guideline"]:
                         result_payload.update(arguments)
                     
                     await self.stream.tool_call(
@@ -1066,7 +1066,7 @@ class Orchestrator:
                         # This ensures the adapter can extract keyword from arguments
                         result_payload = {"result": result}
                         # Preserve original arguments for search tools
-                        if tool_name in ["google_search", "sogou_search"]:
+                        if tool_name in ["google_search", "sogou_search", "search_medical_literature", "search_clinical_guideline"]:
                             result_payload.update(arguments)
                         
                         await self.stream.tool_call(

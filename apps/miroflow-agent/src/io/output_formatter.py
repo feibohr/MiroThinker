@@ -46,7 +46,7 @@ class OutputFormatter:
             content = tool_call_execution_result["result"]
             
             # Add index numbers to search results for citation
-            if tool_name in ["google_search", "sogou_search"]:
+            if tool_name in ["google_search", "sogou_search", "search_medical_literature", "search_clinical_guideline"]:
                 content = self._add_search_result_indices(content)
             
             # Truncate overly long results to prevent context overflow

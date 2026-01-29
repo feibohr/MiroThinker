@@ -79,6 +79,13 @@ class ToolExecutor:
         # Create a copy to avoid modifying the original
         fixed_args = arguments.copy()
 
+        # Fix google_search parameter names
+        # LLM might use 'query' (from medical tools) instead of 'q'
+        if tool_name == "google_search":
+            if "query" in fixed_args and "q" not in fixed_args:
+                fixed_args["q"] = fixed_args.pop("query")
+                logger.info(f"Fixed google_search parameter: 'query' -> 'q'")
+
         # Fix scrape_and_extract_info parameter names
         if tool_name == "scrape_and_extract_info":
             # Map common mistakes to the correct parameter name
