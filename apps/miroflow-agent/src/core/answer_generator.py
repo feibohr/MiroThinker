@@ -108,6 +108,9 @@ class AnswerGenerator:
         # Choose which LLM client to use
         client = self.summary_llm_client if use_summary_model else self.llm_client
         
+        # Determine if this is final summary phase (no tools available)
+        is_final_summary = not tool_definitions or len(tool_definitions) == 0
+        
         original_message_history = message_history
         try:
             response, message_history = await client.create_message(
@@ -119,6 +122,7 @@ class AnswerGenerator:
                 task_log=self.task_log,
                 agent_type=agent_type,
                 stream=stream,
+                is_final_summary=is_final_summary,
             )
 
             if ErrorBox.is_error_box(response):

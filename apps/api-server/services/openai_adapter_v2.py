@@ -56,6 +56,7 @@ class OpenAIAdapterV2:
         self.current_think_taskid: Optional[str] = None
         self.current_think_index: Optional[int] = None
         self.current_think_started: bool = False
+        self.current_think_has_content: bool = False  # Track if think block has any content
         
     def _generate_task_id(self) -> str:
         """Generate unique task ID"""
@@ -229,7 +230,7 @@ class OpenAIAdapterV2:
         chunks = []
         
         # If there's an ongoing think block, close it first
-        if self.current_think_started:
+        if self.current_think_started and self.current_think_has_content:
             chunks.append(self.create_task_chunk(
                 task_id=task_id,
                 model=model,
@@ -240,8 +241,10 @@ class OpenAIAdapterV2:
                 parent_taskid=self.root_process_taskid or "",
                 index=self.current_think_index,
             ))
-            # Reset think block state
+        # Reset think block state
+        if self.current_think_started:
             self.current_think_started = False
+            self.current_think_has_content = False
             self.current_think_taskid = None
             self.current_think_index = None
         
@@ -307,7 +310,7 @@ class OpenAIAdapterV2:
         chunks = []
         
         # If there's an ongoing think block, close it first
-        if self.current_think_started:
+        if self.current_think_started and self.current_think_has_content:
             chunks.append(self.create_task_chunk(
                 task_id=task_id,
                 model=model,
@@ -318,8 +321,10 @@ class OpenAIAdapterV2:
                 parent_taskid=self.root_process_taskid or "",
                 index=self.current_think_index,
             ))
-            # Reset think block state
+        # Reset think block state
+        if self.current_think_started:
             self.current_think_started = False
+            self.current_think_has_content = False
             self.current_think_taskid = None
             self.current_think_index = None
         
@@ -551,7 +556,7 @@ class OpenAIAdapterV2:
         chunks = []
         
         # If there's an ongoing think block, close it first
-        if self.current_think_started:
+        if self.current_think_started and self.current_think_has_content:
             chunks.append(self.create_task_chunk(
                 task_id=task_id,
                 model=model,
@@ -562,8 +567,10 @@ class OpenAIAdapterV2:
                 parent_taskid=self.root_process_taskid or "",
                 index=self.current_think_index,
             ))
-            # Reset think block state
+        # Reset think block state
+        if self.current_think_started:
             self.current_think_started = False
+            self.current_think_has_content = False
             self.current_think_taskid = None
             self.current_think_index = None
         
@@ -759,6 +766,10 @@ class OpenAIAdapterV2:
                 parent_taskid=self.root_process_taskid or "",
                 index=self.current_think_index,
             ))
+        
+        # Track if we have any content
+        if content and content.strip():
+            self.current_think_has_content = True
         
         # Every message: send message_process with content
         chunks.append(self.create_task_chunk(

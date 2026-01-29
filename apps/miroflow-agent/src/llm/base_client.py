@@ -232,6 +232,7 @@ class BaseClient(ABC):
         task_log: Optional["TaskLog"] = None,
         agent_type: str = "main",
         stream: bool = False,
+        is_final_summary: bool = False,
     ) -> Tuple[Any, List[Dict]]:
         """
         Call LLM to generate a response with optional tool call support.
@@ -250,6 +251,7 @@ class BaseClient(ABC):
             task_log: Optional logger for task execution
             agent_type: Type of agent making the call ("main" or sub-agent name)
             stream: Enable streaming mode for real-time response
+            is_final_summary: Whether this is the final summary phase (affects content field output)
 
         Returns:
             Tuple of (response, updated_message_history)
@@ -262,6 +264,7 @@ class BaseClient(ABC):
                 tool_definitions,
                 keep_tool_result=keep_tool_result,
                 stream=stream,
+                is_final_summary=is_final_summary,
             )
 
         except Exception as e:
