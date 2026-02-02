@@ -35,26 +35,37 @@ async def search_clinical_guideline(
     queries: Optional[List[str]] = None,
     limit: int = 5,
 ) -> str:
-    """Search clinical guidelines database for medical practice guidelines and recommendations.
+    """Search clinical guidelines database for disease-specific practice guidelines.
 
-    This tool searches a comprehensive clinical guidelines database to find
-    relevant medical practice guidelines, clinical protocols, and treatment
-    recommendations based on the user's query.
+    This tool searches a medical clinical guidelines database containing:
+    - Latest disease-specific clinical guidelines from authoritative sources:
+      * NCCN (National Comprehensive Cancer Network)
+      * CSCO (Chinese Society of Clinical Oncology)
+      * ASCO (American Society of Clinical Oncology)
+      * ESMO (European Society for Medical Oncology)
+    - Guidelines categorized by types: diagnosis and treatment, prevention and control,
+      medication guidelines, nutrition, rehabilitation, expert consensus, clinical guidelines,
+      and other categories
+    - Note: Some rare or minor diseases may not have specific guidelines available
     
     Use this tool when you need:
-    - Official clinical practice guidelines
-    - Standard diagnostic criteria and treatment protocols
-    - Evidence-based treatment recommendations
-    - Clinical decision-making guidelines
+    - Disease-specific diagnostic and treatment guidelines
+    - Prevention and control protocols
+    - Medication usage guidelines and recommendations
+    - Nutrition and rehabilitation guidelines
+    - Expert consensus statements on clinical practice
     
-    For latest research findings and academic papers,
+    For latest research findings, clinical trials, and scientific studies,
     use search_medical_literature instead.
 
     Args:
         query: The main search query (user's current question)
-        queries: Optional list of expanded/related queries to improve search results.
-                 Can include translations or alternative phrasings.
-                 Example: ["糖尿病诊疗指南", "diabetes clinical guideline"]
+        queries: **REQUIRED** - List of expanded/related queries to improve search results.
+                 You MUST provide at least 2-3 related queries including:
+                 - Alternative Chinese phrasings (e.g., "糖尿病诊疗指南", "糖尿病治疗指南")
+                 - English translations (e.g., "diabetes clinical guideline")
+                 - Specific guideline types (e.g., "糖尿病诊断标准", "diabetes management guideline")
+                 Example: ["糖尿病诊疗指南", "diabetes clinical guideline", "2型糖尿病治疗指南"]
         limit: Maximum number of results to return (default: 5, max: 20)
 
     Returns:
@@ -70,9 +81,12 @@ async def search_clinical_guideline(
     Example:
         search_clinical_guideline(
             query="糖尿病诊疗指南",
-            queries=["2型糖尿病指南", "diabetes management guideline"],
+            queries=["2型糖尿病指南", "diabetes management guideline", "糖尿病治疗指南"],
             limit=5
         )
+        
+    IMPORTANT: Always provide the 'queries' parameter with multiple related search terms
+    to improve search accuracy and coverage.
     """
     if not MEDICAL_SEARCH_API_KEY:
         return json.dumps(

@@ -172,21 +172,24 @@ class StreamHandler:
             },
         )
 
-    async def message(self, message_id: str, delta_content: str):
+    async def message(self, message_id: str, delta_content: str, is_reasoning: bool = False):
         """
         Send message event with streaming content.
 
         Args:
             message_id: Unique identifier for the message
             delta_content: The content delta to send
+            is_reasoning: If True, marks this content as reasoning/thinking process
         """
+        delta = {"content": delta_content}
+        if is_reasoning:
+            delta["reasoning"] = delta_content
+        
         await self.update(
             "message",
             {
                 "message_id": message_id,
-                "delta": {
-                    "content": delta_content,
-                },
+                "delta": delta,
             },
         )
 

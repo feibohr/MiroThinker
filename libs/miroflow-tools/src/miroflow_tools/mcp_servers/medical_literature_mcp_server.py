@@ -35,26 +35,37 @@ async def search_medical_literature(
     queries: Optional[List[str]] = None,
     limit: int = 5,
 ) -> str:
-    """Search medical literature database for relevant research papers and articles.
+    """Search medical literature database for biomedical research papers and studies.
 
-    This tool searches a comprehensive medical literature database to find
-    relevant research papers, clinical studies, and medical articles based
-    on the user's query.
+    This tool searches a comprehensive medical literature database containing:
+    - PubMed platform literature and top-tier medical journals including:
+      * New England Journal of Medicine (NEJM)
+      * The Lancet
+      * Journal of the American Medical Association (JAMA)
+      * British Medical Journal (BMJ)
+    - Literature categorized by types: journal articles, case reports, clinical studies,
+      controlled studies, clinical trials, reviews, meta-analyses, historical literature,
+      classic literature, and guidelines
+    - All biomedical-related literature with large volume and frequent updates
     
     Use this tool when you need:
-    - Latest research findings and scientific studies
-    - Academic papers and peer-reviewed articles
-    - Clinical trial results and research data
-    - Evidence-based medical research
+    - Latest research findings from authoritative medical journals
+    - Clinical trial results and research evidence
+    - Case reports and clinical study data
+    - Meta-analyses and systematic reviews
+    - Biomedical research across all medical specialties
     
-    For standard treatment protocols and clinical practice guidelines, 
+    For disease-specific clinical practice guidelines and treatment protocols, 
     use search_clinical_guideline instead.
 
     Args:
         query: The main search query (user's current question)
-        queries: Optional list of expanded/related queries to improve search results.
-                 Can include translations or alternative phrasings.
-                 Example: ["糖尿病治疗方案", "diabetes treatment plan"]
+        queries: **REQUIRED** - List of expanded/related queries to improve search results.
+                 You MUST provide at least 2-3 related queries including:
+                 - Alternative Chinese phrasings (e.g., "糖尿病治疗方案", "糖尿病疗法")
+                 - English translations (e.g., "diabetes treatment plan")
+                 - Specific medical terms (e.g., "2型糖尿病", "Type 2 diabetes")
+                 Example: ["糖尿病治疗方案", "diabetes treatment plan", "2型糖尿病疗法"]
         limit: Maximum number of results to return (default: 5, max: 20)
 
     Returns:
@@ -70,9 +81,12 @@ async def search_medical_literature(
     Example:
         search_medical_literature(
             query="糖尿病怎么治",
-            queries=["糖尿病治疗方案", "diabetes treatment plan"],
+            queries=["糖尿病治疗方案", "diabetes treatment plan", "2型糖尿病疗法"],
             limit=5
         )
+        
+    IMPORTANT: Always provide the 'queries' parameter with multiple related search terms
+    to improve search accuracy and coverage.
     """
     if not MEDICAL_SEARCH_API_KEY:
         return json.dumps(

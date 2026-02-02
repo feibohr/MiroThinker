@@ -583,6 +583,12 @@ class OpenAIClient(BaseClient):
             # For collecting tool calls in streaming mode
             tool_calls_dict = {}  # indexed by tool_call index
             
+            # For MiroThinker: separate tracking of reasoning and content
+            is_mirothinker = "mirothinker" in self.model_name.lower()
+            reasoning_accumulated = ""
+            content_accumulated = ""
+            tool_call_started = False  # Track if tool call has started
+            
             # Process streaming chunks
             chunk_count = 0
             if self.async_client:
@@ -616,11 +622,16 @@ class OpenAIClient(BaseClient):
                                 reasoning_delta = choice.delta.reasoning
                                 full_content += reasoning_delta
                                 
+                                if is_mirothinker:
+                                    reasoning_accumulated += reasoning_delta
+                                
                                 # Send reasoning content directly without filtering
-                                if self.stream_handler:
+                                # Only send if it contains non-whitespace content
+                                if self.stream_handler and not is_final_summary and reasoning_delta.strip():
                                     await self.stream_handler.message(
                                         message_id=message_id,
-                                        delta_content=reasoning_delta
+                                        delta_content=reasoning_delta,
+                                        is_reasoning=True
                                     )
                             
                             # Handle content field (main content)
@@ -630,16 +641,25 @@ class OpenAIClient(BaseClient):
                                 content_delta = choice.delta.content
                                 full_content += content_delta
                                 
-                                # Only output content in final summary phase
-                                # In thinking phase, content contains <use_mcp_tool> tags for param extraction
-                                if is_final_summary:
+                                if is_mirothinker:
+                                    content_accumulated += content_delta
+                                
+                                # For MiroThinker: thinking is now always in 'reasoning' field
+                                # Content field is only for tool calls or final answer
+                                if is_mirothinker and not is_final_summary:
+                                    # In thinking phase: don't output content (it contains tool calls)
+                                    # Just detect if tool call has started
+                                    if "<use_mcp_tool>" in content_delta or "<use_mcp" in content_delta:
+                                        tool_call_started = True
+                                    # Don't output anything from content field in thinking phase
+                                elif is_final_summary:
                                     # Summary phase: Output content directly (final answer)
                                     if self.stream_handler:
                                         await self.stream_handler.message(
                                             message_id=message_id,
                                             delta_content=content_delta
                                         )
-                                # else: Thinking phase - don't output content
+                                # else: Non-MiroThinker thinking phase - don't output content
                         
                         # Handle role
                         if choice.delta and choice.delta.role:
@@ -698,6 +718,37 @@ class OpenAIClient(BaseClient):
                         "warning",
                         "LLM | Length Limit Reached - Using Truncated",
                         "Returning truncated streaming response.",
+                    )
+            
+            # Log MiroThinker response summary
+            if is_mirothinker:
+                self.task_log.log_step(
+                    "info",
+                    "📝 MiroThinker | Response Summary",
+                    f"Reasoning length: {len(reasoning_accumulated)} chars, "
+                    f"Content length: {len(content_accumulated)} chars, "
+                    f"Total length: {len(full_content)} chars, "
+                    f"Tool call started: {tool_call_started}"
+                )
+                
+                if reasoning_accumulated:
+                    preview = reasoning_accumulated[:500]
+                    if len(reasoning_accumulated) > 500:
+                        preview += "..."
+                    self.task_log.log_step(
+                        "info",
+                        "🧠 MiroThinker | Reasoning Content",
+                        preview
+                    )
+                
+                if content_accumulated:
+                    preview = content_accumulated[:500]
+                    if len(content_accumulated) > 500:
+                        preview += "..."
+                    self.task_log.log_step(
+                        "info",
+                        "📄 MiroThinker | Content Field",
+                        preview
                     )
             
             # Construct complete response object (for compatibility)

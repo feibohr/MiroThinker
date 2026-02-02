@@ -3,6 +3,7 @@
 
 import asyncio
 import functools
+import json
 from typing import Any, Awaitable, Callable, Protocol, TypeVar
 
 from mcp import ClientSession, StdioServerParameters  # (already imported in config.py)
@@ -220,9 +221,14 @@ class ToolManager(ToolManagerProtocol):
 
         self._log(
             "info",
-            "ToolManager | Tool Call Start",
+            "▶️ ToolManager | Tool Call Start",
             f"Connecting to server '{server_name}' to call tool '{tool_name}'",
-            metadata={"arguments": arguments},
+            metadata={
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "arguments": arguments,
+                "arguments_json": json.dumps(arguments, ensure_ascii=False, indent=2)
+            },
         )
 
         if server_name == "playwright":

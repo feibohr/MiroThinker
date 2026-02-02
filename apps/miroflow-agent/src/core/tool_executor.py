@@ -320,6 +320,20 @@ class ToolExecutor:
         tool_calls_data = []
 
         try:
+            # Log complete tool call request parameters
+            self.task_log.log_step(
+                "info",
+                f"🔧 ToolExecutor | Tool Call Request",
+                f"server_name: {server_name}, tool_name: {tool_name}",
+                metadata={
+                    "server_name": server_name,
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                    "agent_name": agent_name,
+                    "turn_count": turn_count,
+                }
+            )
+            
             # Execute tool call
             tool_result = await tool_manager.execute_tool_call(
                 server_name, tool_name, arguments

@@ -11,3 +11,5 @@ top_k: -1
 max_tokens: 4096
 max_context_length: 232144
 repetition_penalty: 1.05
+skip_special_tokens: true
+
